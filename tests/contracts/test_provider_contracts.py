@@ -1,7 +1,7 @@
 """Contract tests for provider ports."""
 
 from collections.abc import Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from uuid import uuid4
 
 import pytest
