@@ -1,0 +1,12 @@
+[
+  {
+    "id": 301,
+    "event": 1,
+    "team_h": 1,
+    "team_a": 2,
+    "kickoff_time": "2026-08-15T14:00:00Z",
+    "finished": false,
+    "team_h_score": null,
+    "team_a_score": null
+  }
+]

@@ -1,0 +1,40 @@
+{
+  "events": [
+    {
+      "id": 1,
+      "name": "Gameweek 1",
+      "deadline_time": "2026-08-14T17:30:00Z",
+      "finished": false
+    }
+  ],
+  "teams": [
+    {"id": 1, "name": "North London Reds", "short_name": "NLR"},
+    {"id": 2, "name": "South Coast Blues", "short_name": "SCB"}
+  ],
+  "elements": [
+    {
+      "id": 101,
+      "team": 1,
+      "first_name": "Ada",
+      "second_name": "Keeper",
+      "web_name": "Ada",
+      "element_type": 1,
+      "now_cost": 45,
+      "status": "a",
+      "news": "",
+      "chance_of_playing_next_round": 100
+    },
+    {
+      "id": 202,
+      "team": 2,
+      "first_name": "Grace",
+      "second_name": "Forward",
+      "web_name": "Grace",
+      "element_type": 4,
+      "now_cost": 75,
+      "status": "d",
+      "news": "Synthetic late fitness test",
+      "chance_of_playing_next_round": 75
+    }
+  ]
+}

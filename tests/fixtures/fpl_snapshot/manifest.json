@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "provider_id": "synthetic-fpl",
+  "season": "2026-27",
+  "observed_at": "2026-08-14T12:00:00Z",
+  "published_at": "2026-08-14T11:55:00Z",
+  "code_revision": "synthetic-fixture",
+  "source_objects": [
+    {
+      "resource_name": "bootstrap-static",
+      "original_filename": "bootstrap-static.json"
+    },
+    {
+      "resource_name": "fixtures",
+      "original_filename": "fixtures.json"
+    }
+  ]
+}
