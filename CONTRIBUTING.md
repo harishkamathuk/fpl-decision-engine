@@ -5,9 +5,11 @@
 - `main` contains only stable, releasable code.
 - `develop` is the integration branch for the next release.
 - Work is performed on short-lived branches created from `develop` and merged back through pull requests.
-- Feature/fix branches **must include the GitHub issue number** using `<type>/<issue-number>-<short-description>`, for example `feature/1-domain-model` or `fix/27-selling-price`.
-- Do not create untracked feature branches without an issue unless the change is trivial repository maintenance.
-- Release pull requests promote a coherent, tested baseline from `develop` to `main`.
+- Pull-request branches targeting `develop` **must include the GitHub issue number** using `<type>/<issue-number>-<short-description>`.
+- Allowed branch types are `feature`, `fix`, `hotfix`, `chore`, `docs`, `refactor`, `test`, `perf`, `build` and `ci`.
+- Examples: `feature/1-domain-model`, `fix/27-selling-price`.
+- Every non-release change therefore starts with a GitHub issue; CI enforces this naming rule for pull requests into `develop`.
+- Release pull requests promote a coherent, tested baseline from `develop` to `main`; the `develop` branch itself is exempt from the issue-number naming pattern.
 
 ## Development
 
