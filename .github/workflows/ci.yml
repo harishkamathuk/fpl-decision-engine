@@ -13,6 +13,16 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
+      - name: Validate issue-numbered branch name
+        if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if [[ ! "$HEAD_REF" =~ ^(feature|fix|hotfix|chore|docs|refactor|test|perf|build|ci)/[0-9]+-[a-z0-9][a-z0-9-]*$ ]]; then
+            echo "Branch '$HEAD_REF' does not follow <type>/<issue-number>-<short-description>."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v7
 
