@@ -5,10 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
-from typing import Generic, TypeVar
-
-
-T_co = TypeVar("T_co", covariant=True)
 
 
 def _require_aware(value: datetime, field_name: str) -> None:
@@ -91,9 +87,9 @@ class Freshness:
 
 
 @dataclass(frozen=True, slots=True)
-class ProviderResponse(Generic[T_co]):
+class ProviderResponse[T]:
     """Canonical envelope returned by provider ports."""
 
-    data: T_co
+    data: T
     provenance: ProviderProvenance
     freshness: Freshness

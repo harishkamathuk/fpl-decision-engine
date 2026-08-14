@@ -1,7 +1,6 @@
 """Reusable contract assertions for provider adapters."""
 
 from collections.abc import Sequence
-from typing import TypeVar
 
 from fpl_decision_engine.domain import GameweekNumber, Projection
 from fpl_decision_engine.ports import (
@@ -12,10 +11,7 @@ from fpl_decision_engine.ports import (
 )
 
 
-T = TypeVar("T")
-
-
-def assert_provider_response_contract(
+def assert_provider_response_contract[T](
     response: ProviderResponse[T],
     descriptor: ProviderDescriptor,
 ) -> None:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Protocol, TypeVar, runtime_checkable
+from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from fpl_decision_engine.domain import (
@@ -18,9 +18,6 @@ from fpl_decision_engine.domain import (
 )
 
 from .types import ProviderDescriptor, ProviderResponse
-
-
-EvidenceT_co = TypeVar("EvidenceT_co", covariant=True)
 
 
 @runtime_checkable
@@ -72,11 +69,11 @@ class ProjectionProvider(Protocol):
 
 
 @runtime_checkable
-class NewsEvidenceProvider(Protocol[EvidenceT_co]):
+class NewsEvidenceProvider[EvidenceT](Protocol):
     @property
     def descriptor(self) -> ProviderDescriptor: ...
 
     def evidence(
         self,
         player_ids: Sequence[UUID] | None = None,
-    ) -> ProviderResponse[tuple[EvidenceT_co, ...]]: ...
+    ) -> ProviderResponse[tuple[EvidenceT, ...]]: ...
