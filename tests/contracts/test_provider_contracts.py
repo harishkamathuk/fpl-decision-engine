@@ -1,7 +1,7 @@
 """Contract tests for provider ports."""
 
 from collections.abc import Sequence
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -19,7 +19,6 @@ from fpl_decision_engine.ports import (
 )
 
 from .helpers import assert_projection_provider_contract
-
 
 NOW = datetime(2026, 8, 14, 12, 0, tzinfo=UTC)
 
