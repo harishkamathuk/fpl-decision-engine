@@ -1,0 +1,16 @@
+season: "2026-27"
+
+storage:
+  backend: "duckdb"
+  database: "state/fpl.duckdb"
+  data_root: "data"
+
+optimisation:
+  horizon: 6
+  strategy: "expected-points"
+
+projections:
+  provider: null
+
+logging:
+  level: "INFO"
