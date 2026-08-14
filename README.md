@@ -4,7 +4,7 @@ An open-source, local-first decision-support engine for Fantasy Premier League.
 
 The project combines player projections, optimisation, multi-gameweek planning and rival-aware strategy to support better FPL decisions while keeping forecasting, strategy and decision logic independently replaceable.
 
-> **Status:** Early development. The canonical domain model and provider/optimisation contracts are implemented on `develop`. Data ingestion, persistence, projection integration and optimisation are the next vertical slices. `main` remains the stable/releasable branch.
+> **Status:** Early development. The canonical domain model, provider/optimisation contracts and offline snapshot ingestion are implemented on `develop`. DuckDB/Parquet persistence, projection integration and optimisation are the next vertical slices. `main` remains the stable/releasable branch.
 
 ## Philosophy
 
@@ -82,10 +82,12 @@ On `develop` the project currently includes:
 - provider contracts for core data, manager state, leagues, projections and news/evidence;
 - replaceable optimisation-engine contracts;
 - provider capability metadata, provenance/freshness envelopes and machine-readable error semantics;
+- an offline-first immutable snapshot pipeline and FPL-shaped bootstrap/fixtures adapter;
+- `fpl sync --source snapshot --input <directory-or-manifest>` with typed failure reporting;
 - reusable provider contract-test helpers;
 - ADRs and enforced issue-numbered branch naming.
 
-The repository does **not** yet contain a live data-ingestion implementation, persisted analytical datasets, a production projection provider or an operational optimiser. Those are tracked as issues rather than presented here as finished features.
+The repository deliberately does **not** contain a live official-FPL HTTP fetcher. It also does not yet contain persisted curated analytical datasets, a production projection provider or an operational optimiser. Those are tracked as issues rather than presented here as finished features.
 
 ## Roadmap
 
@@ -118,7 +120,13 @@ uv run pyright
 uv run pytest
 ```
 
-The commands above are executable against the current repository. Feature-specific commands such as `fpl sync` will be documented only when their implementation lands.
+The commands above are executable against the current repository. Import a complete local snapshot with:
+
+```bash
+uv run fpl sync --source snapshot --input <directory-or-manifest>
+```
+
+The input must contain `bootstrap-static.json` and `fixtures.json`, either directly or referenced by a `manifest.json`. Successful imports preserve exact bytes below `data/raw/<provider>/<season>/<snapshot-id>/`, with per-object SHA-256 hashes and metadata. Identical re-imports reuse the snapshot; conflicting evidence is never overwritten.
 
 ## Branch and contribution model
 
@@ -146,7 +154,7 @@ Do not commit:
 - live provider snapshots that are not explicitly licensed for redistribution;
 - Premier League/FPL logos, player imagery or other protected media.
 
-CI uses small synthetic fixtures. Local source snapshots and analytical state belong under ignored data/state paths.
+CI uses small synthetic fixtures and requires no network access. Local source snapshots and analytical state belong under ignored data/state paths. The snapshot source is the only operational ingestion mode: recurring automated access to official FPL resources remains disabled while Issue #18 is unresolved.
 
 Third-party integrations must record their upstream source, licence, version/commit, purpose and upgrade strategy. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and the ADRs for the current policy.
 
