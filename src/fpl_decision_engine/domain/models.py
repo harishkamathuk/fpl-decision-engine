@@ -83,9 +83,13 @@ class Projection(DomainModel):
 
     @model_validator(mode="after")
     def percentiles_must_be_ordered(self) -> Self:
-        if self.p10 is not None and self.p50 is not None and self.p90 is not None:
-            if not self.p10 <= self.p50 <= self.p90:
-                raise ValueError("projection percentiles must satisfy p10 <= p50 <= p90")
+        if (
+            self.p10 is not None
+            and self.p50 is not None
+            and self.p90 is not None
+            and not self.p10 <= self.p50 <= self.p90
+        ):
+            raise ValueError("projection percentiles must satisfy p10 <= p50 <= p90")
         return self
 
 
