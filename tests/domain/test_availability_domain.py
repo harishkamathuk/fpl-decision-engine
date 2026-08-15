@@ -4,12 +4,19 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
+from fpl_decision_engine.application import assess_availability
 from fpl_decision_engine.domain import (
+    AvailabilityAssessment,
+    AvailabilityDisposition,
     AvailabilityEvidence,
     AvailabilityReason,
     AvailabilityState,
     EvidenceAttribute,
     EvidenceConfidence,
+    EvidenceTemporalRelation,
+    EvidenceTiming,
+    GameweekNumber,
+    Projection,
 )
 
 OBSERVED_AT = datetime(2026, 8, 15, 10, tzinfo=UTC)
@@ -67,3 +74,50 @@ def test_availability_evidence_rejects_invalid_provenance(
 
 def test_missing_publication_time_remains_explicitly_missing() -> None:
     assert make_evidence(published_at=None).published_at is None
+
+
+def make_assessment(**updates: object) -> AvailabilityAssessment:
+    evidence = make_evidence()
+    values: dict[str, object] = {
+        "player_id": evidence.player_id,
+        "projection_generated_at": OBSERVED_AT - timedelta(hours=2),
+        "evidence": (evidence,),
+        "evidence_timing": (
+            EvidenceTiming(
+                evidence_id=evidence.evidence_id,
+                relation=EvidenceTemporalRelation.NEWER,
+            ),
+        ),
+        "disposition": AvailabilityDisposition.EXCLUDE,
+        "applied_evidence_ids": (evidence.evidence_id,),
+    }
+    values.update(updates)
+    return AvailabilityAssessment.model_validate(values)
+
+
+def test_assessment_rejects_evidence_in_two_disposition_categories() -> None:
+    with pytest.raises(ValidationError, match="mutually disjoint"):
+        make_assessment(
+            already_known_evidence_ids=("snapshot:player:1",),
+        )
+
+
+def test_assessment_rejects_uncategorised_evidence() -> None:
+    with pytest.raises(ValidationError, match="categorize every evidence ID exactly once"):
+        make_assessment(applied_evidence_ids=())
+
+
+def test_application_assessment_satisfies_category_partition_invariant() -> None:
+    evidence = make_evidence()
+    projection = Projection(
+        player_id=evidence.player_id,
+        gameweek=GameweekNumber(value=1),
+        expected_points=5.0,
+        source="synthetic",
+        model_version="v1",
+        generated_at=OBSERVED_AT - timedelta(hours=2),
+    )
+
+    result = assess_availability((projection,), (evidence,))
+
+    assert result.assessments[0].applied_evidence_ids == (evidence.evidence_id,)

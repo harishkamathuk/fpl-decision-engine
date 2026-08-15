@@ -135,15 +135,21 @@ class AvailabilityAssessment(DomainModel):
         timing_ids = tuple(item.evidence_id for item in self.evidence_timing)
         if timing_ids != evidence_ids:
             raise ValueError("assessment timing must correspond to evidence in order")
-        categorized_ids = (
-            self.applied_evidence_ids
-            + self.superseded_evidence_ids
-            + self.already_known_evidence_ids
-            + self.stale_evidence_ids
-            + self.unknown_time_evidence_ids
+        categories = (
+            self.applied_evidence_ids,
+            self.superseded_evidence_ids,
+            self.already_known_evidence_ids,
+            self.stale_evidence_ids,
+            self.unknown_time_evidence_ids,
         )
-        if not set(categorized_ids) <= set(evidence_ids):
-            raise ValueError("assessment disposition references unknown evidence")
+        categorized_ids: set[str] = set()
+        for category in categories:
+            category_ids = set(category)
+            if categorized_ids & category_ids:
+                raise ValueError("assessment evidence categories must be mutually disjoint")
+            categorized_ids.update(category_ids)
+        if categorized_ids != set(evidence_ids):
+            raise ValueError("assessment must categorize every evidence ID exactly once")
         return self
 
     @property
