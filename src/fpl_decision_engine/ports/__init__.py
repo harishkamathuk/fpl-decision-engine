@@ -10,7 +10,7 @@ from .errors import (
     ProviderRateLimitError,
     ProviderUnavailableError,
 )
-from .optimisation import OptimisationEngine
+from .optimisation import OptimisationEngine, OptimisationError, OptimisationErrorCode
 from .persistence import (
     CanonicalDatasetName,
     CanonicalRepository,
@@ -52,6 +52,8 @@ __all__ = [
     "ManagerStateProvider",
     "NewsEvidenceProvider",
     "OptimisationEngine",
+    "OptimisationError",
+    "OptimisationErrorCode",
     "PlayerDataProvider",
     "ProjectionProvider",
     "ProviderAuthenticationError",

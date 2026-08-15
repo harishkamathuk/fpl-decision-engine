@@ -4,7 +4,7 @@ An open-source, local-first decision-support engine for Fantasy Premier League.
 
 The project combines player projections, optimisation, multi-gameweek planning and rival-aware strategy to support better FPL decisions while keeping forecasting, strategy and decision logic independently replaceable.
 
-> **Status:** Early development. The canonical domain model, provider/optimisation contracts, offline snapshot ingestion, local DuckDB/Parquet persistence and local-file projection providers are implemented on `develop`. Optimisation is the next vertical slice. `main` remains the stable/releasable branch.
+> **Status:** Early development. The canonical domain model, offline data/projection pipeline and deterministic single-gameweek optimiser are implemented on `develop`. Transfer optimisation is the next vertical slice. `main` remains the stable/releasable branch.
 
 ## Philosophy
 
@@ -85,11 +85,13 @@ On `develop` the project currently includes:
 - an offline-first immutable snapshot pipeline and FPL-shaped bootstrap/fixtures adapter;
 - immutable canonical Parquet datasets with DuckDB catalogue, history/latest views and DecisionRun provenance;
 - generic and FPL Forecast-shaped local CSV projection adapters with exact external-ID resolution;
+- a direct-HiGHS single-gameweek optimiser for legal squad, XI, captain, vice-captain and ordered
+  bench selection with bounded scenario constraints;
 - `fpl sync --source snapshot --input <directory-or-manifest>` with typed failure reporting;
 - reusable provider contract-test helpers;
 - ADRs and enforced issue-numbered branch naming.
 
-The repository deliberately does **not** contain a live official-FPL HTTP fetcher or automatic projection-artifact downloader. It also does not yet contain an operational optimiser. Those are tracked as issues rather than presented here as finished features.
+The repository deliberately does **not** contain a live official-FPL HTTP fetcher or automatic projection-artifact downloader. The current optimiser is intentionally limited to fresh-squad, mean-only single-gameweek selection; transfers and multi-gameweek strategy remain later issues.
 
 ## Roadmap
 
