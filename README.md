@@ -2,9 +2,14 @@
 
 An open-source, local-first decision-support engine for Fantasy Premier League.
 
-The project combines player projections, optimisation, multi-gameweek planning and rival-aware strategy to support better FPL decisions while keeping forecasting, strategy and decision logic independently replaceable.
+The project combines player projections, optimisation and multi-gameweek planning to support better
+FPL decisions while keeping forecasting, strategy and decision logic independently replaceable.
+Rival-aware strategy is a planned capability, not part of the current release.
 
-> **Status:** Early development. The canonical domain model, offline data/projection pipeline and deterministic single-gameweek optimiser are implemented on `develop`. Transfer optimisation is the next vertical slice. `main` remains the stable/releasable branch.
+> **Status:** v0.1.0 is the first operational local-first decision-engine baseline. It includes
+> canonical domain/provider boundaries, offline ingestion and persistence, local projections,
+> single- and multi-Gameweek optimisation, availability evidence, and reproducible GW1 decision
+> capture. The remaining roadmap is still active; `main` remains the stable/releasable branch.
 
 ## Philosophy
 
@@ -73,7 +78,7 @@ Architecture decisions are recorded under [`docs/adr`](docs/adr).
 
 ## Implemented today
 
-On `develop` the project currently includes:
+The project currently includes:
 
 - Python 3.12 / `uv` project foundation;
 - strict Ruff, Pyright and pytest CI;
@@ -87,23 +92,37 @@ On `develop` the project currently includes:
 - generic and FPL Forecast-shaped local CSV projection adapters with exact external-ID resolution;
 - a direct-HiGHS single-gameweek optimiser for legal squad, XI, captain, vice-captain and ordered
   bench selection with bounded scenario constraints;
+- deterministic local manager-state ingestion with manager-specific purchase and selling prices;
+- single-Gameweek transfer optimisation with a comparable no-transfer baseline, exact bank
+  arithmetic, free-transfer rollover and incremental transfer-hit accounting;
+- joint multi-Gameweek transfer planning with carried squad, bank and free-transfer state,
+  configurable horizons, and geometric or explicit future-point weighting;
+- conservative availability/news evidence assessment with post-forecast exclusions, review and
+  conflict handling without mutating unconditional expected points;
+- blank-squad DecisionRun persistence and immutable versioned GW1 decision bundles that keep the
+  model recommendation separate from the actual submitted choice;
+- a reproducible GW1 operational runbook covering evidence capture, optimisation, review and manual
+  submission;
 - `fpl sync --source snapshot --input <directory-or-manifest>` with typed failure reporting;
 - reusable provider contract-test helpers;
 - ADRs and enforced issue-numbered branch naming.
 
-The repository deliberately does **not** contain a live official-FPL HTTP fetcher or automatic projection-artifact downloader. The current optimiser is intentionally limited to fresh-squad, mean-only single-gameweek selection; transfers and multi-gameweek strategy remain later issues.
+The repository deliberately does **not** contain a live official-FPL HTTP fetcher or automatic
+projection-artifact downloader. The engine supports mean-only blank-squad single-Gameweek
+optimisation, manager-specific transfer optimisation and deterministic multi-Gameweek planning.
+Chips, stochastic/uncertainty objectives, rival-aware utility, evaluation/backtesting and
+agent/API/GUI surfaces remain deliberately deferred.
 
 ## Roadmap
 
-Work is being delivered as vertical slices through GitHub Issues. The near-term sequence is:
+v0.1.0 is the first operational engine baseline, not completion of the roadmap. The current intended
+sequence is:
 
-1. **#18** — validate current FPL data sources, access model and usage constraints;
-2. **#3** — implement offline-first FPL-shaped snapshot ingestion;
-3. **#4** — add DuckDB/Parquet persistence and reproducible run provenance;
-4. **#5** — integrate the first projection providers behind the canonical interface;
-5. **#6** — build the single-gameweek squad, lineup and captain optimiser;
-6. **#7** — add manager state, selling prices and transfer optimisation;
-7. **#8 onward** — multi-gameweek planning, rival intelligence, news, chip strategy, backtesting and agent interfaces.
+1. **#12** — evaluation, backtesting and decision-regret framework;
+2. **#9** — mini-league and rival intelligence once real league data is available;
+3. **#11** — chip, uncertainty and strategy work, likely decomposed into smaller slices;
+4. **#32** — multi-source availability/news evidence and forecast recalibration;
+5. **#13** — CLI, API and conversational integration last.
 
 The issue backlog is the source of truth for planned work; the README intentionally avoids duplicating detailed acceptance criteria.
 
@@ -158,25 +177,29 @@ Do not commit:
 - live provider snapshots that are not explicitly licensed for redistribution;
 - Premier League/FPL logos, player imagery or other protected media.
 
-CI uses small synthetic fixtures and requires no network access. Local source snapshots and analytical state belong under ignored data/state paths. The snapshot source is the only operational ingestion mode: recurring automated access to official FPL resources remains disabled while Issue #18 is unresolved.
+CI uses small synthetic fixtures and requires no network access. Local source snapshots and
+analytical state belong under ignored data/state paths. Manual/local snapshot ingestion remains the
+only operational official-FPL source mode. Issue #18 is complete, but its standing caveat remains:
+public technical accessibility does not imply permission for automated extraction, and current FPL
+terms must be re-checked before enabling recurring automated official-source access.
 
 Third-party integrations must record their upstream source, licence, version/commit, purpose and upgrade strategy. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and the ADRs for the current policy.
 
 ## Project scope
 
-The long-term target is more than a one-gameweek expected-points selector. The architecture is intended to support:
+The v0.1.0 engine already goes beyond one-Gameweek expected-points selection. Remaining planned
+capabilities include:
 
 - player projection ensembles and uncertainty;
-- legal squad, lineup, captain and transfer optimisation;
-- multi-gameweek planning and transfer optionality;
 - chip strategy;
 - mini-league/rival-aware objectives;
-- news and availability evidence;
+- multi-source news and forecast recalibration;
 - reproducible simulation and backtesting;
 - decision-regret analysis;
 - conversational explanation over deterministic analytical tools.
 
-These capabilities will be added incrementally behind stable contracts rather than as one tightly coupled application.
+These capabilities will be added incrementally behind stable contracts rather than as one tightly
+coupled application.
 
 ## Disclaimer
 
