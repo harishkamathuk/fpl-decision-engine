@@ -3,6 +3,7 @@
 from .base import DomainModel
 from .models import (
     DecisionRun,
+    DecisionRunStatus,
     Fixture,
     Gameweek,
     League,
@@ -30,6 +31,7 @@ __all__ = [
     "ChipStatus",
     "ChipType",
     "DecisionRun",
+    "DecisionRunStatus",
     "DomainModel",
     "ExternalRef",
     "Fixture",

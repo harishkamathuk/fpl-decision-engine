@@ -4,7 +4,7 @@ An open-source, local-first decision-support engine for Fantasy Premier League.
 
 The project combines player projections, optimisation, multi-gameweek planning and rival-aware strategy to support better FPL decisions while keeping forecasting, strategy and decision logic independently replaceable.
 
-> **Status:** Early development. The canonical domain model, provider/optimisation contracts and offline snapshot ingestion are implemented on `develop`. DuckDB/Parquet persistence, projection integration and optimisation are the next vertical slices. `main` remains the stable/releasable branch.
+> **Status:** Early development. The canonical domain model, provider/optimisation contracts, offline snapshot ingestion and local DuckDB/Parquet persistence are implemented on `develop`. Projection integration and optimisation are the next vertical slices. `main` remains the stable/releasable branch.
 
 ## Philosophy
 
@@ -83,11 +83,12 @@ On `develop` the project currently includes:
 - replaceable optimisation-engine contracts;
 - provider capability metadata, provenance/freshness envelopes and machine-readable error semantics;
 - an offline-first immutable snapshot pipeline and FPL-shaped bootstrap/fixtures adapter;
+- immutable canonical Parquet datasets with DuckDB catalogue, history/latest views and DecisionRun provenance;
 - `fpl sync --source snapshot --input <directory-or-manifest>` with typed failure reporting;
 - reusable provider contract-test helpers;
 - ADRs and enforced issue-numbered branch naming.
 
-The repository deliberately does **not** contain a live official-FPL HTTP fetcher. It also does not yet contain persisted curated analytical datasets, a production projection provider or an operational optimiser. Those are tracked as issues rather than presented here as finished features.
+The repository deliberately does **not** contain a live official-FPL HTTP fetcher. It also does not yet contain a production projection provider or an operational optimiser. Those are tracked as issues rather than presented here as finished features.
 
 ## Roadmap
 
