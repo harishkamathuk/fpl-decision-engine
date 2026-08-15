@@ -1,5 +1,17 @@
 """Canonical domain model for the decision engine."""
 
+from .availability import (
+    AvailabilityAssessment,
+    AvailabilityAssessmentSet,
+    AvailabilityDisposition,
+    AvailabilityEvidence,
+    AvailabilityReason,
+    AvailabilityState,
+    EvidenceAttribute,
+    EvidenceConfidence,
+    EvidenceTemporalRelation,
+    EvidenceTiming,
+)
 from .base import DomainModel
 from .models import (
     DecisionRun,
@@ -33,12 +45,22 @@ from .value_objects import (
 )
 
 __all__ = [
+    "AvailabilityAssessment",
+    "AvailabilityAssessmentSet",
+    "AvailabilityDisposition",
+    "AvailabilityEvidence",
+    "AvailabilityReason",
+    "AvailabilityState",
     "ChipState",
     "ChipStatus",
     "ChipType",
     "DecisionRun",
     "DecisionRunStatus",
     "DomainModel",
+    "EvidenceAttribute",
+    "EvidenceConfidence",
+    "EvidenceTiming",
+    "EvidenceTemporalRelation",
     "ExternalRef",
     "Fixture",
     "Formation",
