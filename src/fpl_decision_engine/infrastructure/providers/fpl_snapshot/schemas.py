@@ -35,7 +35,11 @@ class SourcePlayer(SourceModel):
     now_cost: int = Field(ge=0)
     status: str = Field(min_length=1)
     news: str = ""
+    news_added: AwareDatetime | None = None
+    chance_of_playing_this_round: int | None = Field(default=None, ge=0, le=100)
     chance_of_playing_next_round: int | None = Field(default=None, ge=0, le=100)
+    can_select: bool | None = None
+    removed: bool | None = None
 
 
 class SourceBootstrap(SourceModel):
