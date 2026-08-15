@@ -45,12 +45,14 @@ The goal is useful engineering history, not maximal commit preservation.
 
 ### Release PRs from `develop` to `main`
 
-Use **squash merge** by default. `main` is the stable release history, so a release PR should normally
-be represented by one concise release commit while the detailed engineering history remains on
-`develop`.
+Use a **merge commit by default**. Preserve `develop` ancestry in `main` so successive releases do
+not make already-released integration commits appear unreleased or create divergent histories.
 
-History principle: `develop` preserves useful engineering history; `main` preserves concise release
-history.
+Use release tags plus:
+
+    git log --first-parent main
+
+as the concise release history. Do not squash a release merely to make `main` visually linear.
 
 ## Python documentation
 
