@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID
 
 import pytest
 
+from fpl_decision_engine.application import (
+    compare_planning_horizons,
+    persist_planning_decision_run,
+)
 from fpl_decision_engine.domain import (
     GameweekNumber,
     ManagerState,
@@ -24,10 +29,14 @@ from fpl_decision_engine.infrastructure.optimisation import (
     HighsSingleGameweekOptimiser,
     HighsSingleGameweekTransferOptimiser,
 )
+from fpl_decision_engine.infrastructure.persistence import DuckDbDecisionRunRepository
 from fpl_decision_engine.ports import (
+    Freshness,
     OptimisationEngine,
     OptimisationError,
     OptimisationErrorCode,
+    ProviderProvenance,
+    ProviderResponse,
 )
 
 GENERATED_AT = datetime(2026, 8, 15, 8, tzinfo=UTC)
@@ -593,6 +602,59 @@ def test_small_independent_two_week_enumeration_matches_highs() -> None:
     assert result.primary_objective == pytest.approx(oracle[0])
     assert -result.total_transfers == oracle[1]
     assert result.secondary_squad_objective == pytest.approx(oracle[2])
+
+
+def test_horizon_comparison_and_decision_run_round_trip(tmp_path: Path) -> None:
+    base = make_request(horizon=3)
+    incoming = outsiders(base, Position.FORWARD)[0]
+    request = make_request(
+        horizon=3,
+        transfer_limits=(1, 1, 1),
+        point_updates={(incoming.id, gameweek): 15.0 for gameweek in range(1, 4)},
+    )
+    planner = HighsMultiGameweekPlanner()
+    comparisons = compare_planning_horizons(planner, request, (1, 3))
+    result = comparisons[-1][1]
+    manager_response = ProviderResponse(
+        data=request.initial_manager_state,
+        provenance=ProviderProvenance(
+            provider_id="local-manager",
+            provider_version="1",
+            retrieved_at=GENERATED_AT,
+            source_reference="manager.json",
+            snapshot_id="sha256:manager-state",
+            source_sha256="a" * 64,
+            mapping_fingerprint="b" * 64,
+            season="2026-27",
+        ),
+        freshness=Freshness(as_of=GENERATED_AT),
+    )
+    repository = DuckDbDecisionRunRepository(tmp_path / "state" / "fpl.duckdb")
+    run = persist_planning_decision_run(
+        repository,
+        run_id=UUID(int=80_000),
+        created_at=GENERATED_AT,
+        season="2026-27",
+        code_revision="deadbeef",
+        source_is_dirty=False,
+        config_fingerprint="sha256:config",
+        manager_response=manager_response,
+        request=request,
+        result=result,
+    )
+
+    assert [item[0] for item in comparisons] == [1, 3]
+    assert repository.get(run.id) == run
+    assert run.input_snapshot_ids == ("local-manager:sha256:manager-state",)
+    assert run.projection_versions == ("synthetic:v1",)
+    assert run.optimiser_engine == "highs-multi-gameweek-planner-v1"
+    settings = dict(run.optimiser_settings)
+    assert settings["horizon"] == "3"
+    assert settings["gameweek_weights"] == "1,1,1"
+    assert settings["target_gameweeks"] == "1,2,3"
+    assert run.diagnostic_summary is not None
+    assert "first_transfer_in_ids=" in run.diagnostic_summary
+    assert "weighted_gain=" in run.diagnostic_summary
 
 
 @pytest.mark.parametrize("horizon", [1, 3, 6, 10])
