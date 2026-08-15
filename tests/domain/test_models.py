@@ -9,6 +9,8 @@ from fpl_decision_engine.domain import (
     GameweekNumber,
     League,
     LeagueEntry,
+    ManagerState,
+    Money,
     Position,
     Projection,
     Squad,
@@ -37,6 +39,44 @@ def valid_squad_members() -> tuple[SquadMember, ...]:
 def test_valid_squad_enforces_canonical_composition() -> None:
     squad = Squad(members=valid_squad_members())
     assert len(squad.members) == 15
+
+
+def test_manager_state_requires_owned_purchase_and_selling_prices() -> None:
+    squad = Squad(members=valid_squad_members())
+    with pytest.raises(ValidationError, match="purchase and selling prices"):
+        ManagerState(
+            manager_id=uid(500),
+            gameweek=GameweekNumber(value=1),
+            squad=squad,
+            bank=Money(tenths_million=10),
+            free_transfers=1,
+        )
+
+
+def test_manager_state_preserves_remaining_free_transfers_and_sunk_cost() -> None:
+    priced = tuple(
+        member.model_copy(
+            update={
+                "purchase_price": Money(tenths_million=50),
+                "selling_price": Money(tenths_million=51),
+            }
+        )
+        for member in valid_squad_members()
+    )
+    state = ManagerState(
+        manager_id=uid(500),
+        gameweek=GameweekNumber(value=1),
+        squad=Squad(members=priced),
+        bank=Money(tenths_million=10),
+        free_transfers=2,
+        transfers_made=1,
+        existing_points_cost=4,
+    )
+    assert (state.free_transfers, state.transfers_made, state.existing_points_cost) == (
+        2,
+        1,
+        4,
+    )
 
 
 def test_squad_rejects_more_than_three_players_from_one_club() -> None:
