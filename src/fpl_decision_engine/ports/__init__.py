@@ -11,6 +11,19 @@ from .errors import (
     ProviderUnavailableError,
 )
 from .optimisation import OptimisationEngine
+from .persistence import (
+    CanonicalDatasetName,
+    CanonicalRepository,
+    CanonicalSnapshot,
+    DatasetArtifact,
+    DecisionRunRepository,
+    ImmutableRegistrationConflict,
+    PersistenceError,
+    SnapshotCatalog,
+    SnapshotRegistration,
+    SourceObjectHash,
+    UnsupportedSchemaVersion,
+)
 from .providers import (
     LeagueProvider,
     ManagerStateProvider,
@@ -27,6 +40,13 @@ from .types import (
 )
 
 __all__ = [
+    "CanonicalDatasetName",
+    "CanonicalRepository",
+    "CanonicalSnapshot",
+    "DatasetArtifact",
+    "DecisionRunRepository",
+    "ImmutableRegistrationConflict",
+    "PersistenceError",
     "Freshness",
     "LeagueProvider",
     "ManagerStateProvider",
@@ -46,4 +66,8 @@ __all__ = [
     "ProviderRateLimitError",
     "ProviderResponse",
     "ProviderUnavailableError",
+    "SnapshotCatalog",
+    "SnapshotRegistration",
+    "SourceObjectHash",
+    "UnsupportedSchemaVersion",
 ]

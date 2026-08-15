@@ -1,6 +1,7 @@
 """Canonical FPL domain entities."""
 
 from collections import Counter
+from enum import StrEnum
 from math import isfinite
 from typing import Self
 from uuid import UUID
@@ -180,12 +181,39 @@ class League(DomainModel):
         return self
 
 
+class DecisionRunStatus(StrEnum):
+    """Lifecycle outcome recorded for a reproducible decision run."""
+
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
 class DecisionRun(DomainModel):
+    """Configuration and input provenance needed to reproduce a recommendation.
+
+    Fields owned by later projection and optimisation slices are nullable rather than
+    populated with invented values. Tuple fields preserve multiple exact inputs without
+    introducing infrastructure-specific serialization into the domain.
+    """
+
     id: UUID
     created_at: AwareDatetime
+    season: str | None = None
     gameweek: GameweekNumber
     code_revision: str = Field(min_length=1)
+    source_is_dirty: bool | None = None
     config_fingerprint: str = Field(min_length=1)
+    effective_config_reference: str | None = None
     input_snapshot_ids: tuple[str, ...] = ()
     projection_versions: tuple[str, ...] = ()
+    optimiser_engine: str | None = None
+    optimiser_version: str | None = None
+    optimiser_settings_reference: str | None = None
+    optimiser_settings: tuple[tuple[str, str], ...] = ()
+    strategy_mode: str | None = None
+    objective_mode: str | None = None
     random_seed: int | None = None
+    simulation_count: int | None = Field(default=None, ge=0)
+    output_artifact_references: tuple[str, ...] = ()
+    status: DecisionRunStatus | None = None
+    diagnostic_summary: str | None = None
