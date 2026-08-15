@@ -23,6 +23,35 @@ Promotion from `develop` to `main` is a release event, not a prerequisite for co
 implementation issues. Release pull requests and release notes should reference the already-completed
 issues included in that release.
 
+## Merge strategy
+
+Use different merge strategies for integration history and release history.
+
+### Non-release PRs into `develop`
+
+Feature, fix, docs, refactor, test, chore and similar PRs should use a **merge commit by default**.
+This preserves meaningful implementation commits and keeps the PR boundary explicit in `develop`.
+Do not squash merely to force a linear integration history.
+
+Before merging:
+
+- required CI must be green and review must be complete;
+- commits that represent meaningful implementation steps may remain separate;
+- temporary, fixup, typo-only or other low-value commits should be cleaned up when practical before
+  merge; and
+- do not rewrite published/shared branch history merely to make it look tidier.
+
+The goal is useful engineering history, not maximal commit preservation.
+
+### Release PRs from `develop` to `main`
+
+Use **squash merge** by default. `main` is the stable release history, so a release PR should normally
+be represented by one concise release commit while the detailed engineering history remains on
+`develop`.
+
+History principle: `develop` preserves useful engineering history; `main` preserves concise release
+history.
+
 ## Python documentation
 
 Prefer meaningful documentation over mechanically adding docstrings everywhere. Documentation

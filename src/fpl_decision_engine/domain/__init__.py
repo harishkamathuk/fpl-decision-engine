@@ -34,6 +34,11 @@ from .optimisation import (
     SingleGameweekOptimisationRequest,
     SingleGameweekOptimisationResult,
 )
+from .transfers import (
+    SingleGameweekTransferOptimisationRequest,
+    SingleGameweekTransferOptimisationResult,
+    TransferPair,
+)
 from .value_objects import (
     ChipState,
     ChipStatus,
@@ -42,6 +47,7 @@ from .value_objects import (
     GameweekNumber,
     Money,
     Position,
+    calculate_selling_price,
 )
 
 __all__ = [
@@ -76,8 +82,12 @@ __all__ = [
     "Projection",
     "SingleGameweekOptimisationRequest",
     "SingleGameweekOptimisationResult",
+    "SingleGameweekTransferOptimisationRequest",
+    "SingleGameweekTransferOptimisationResult",
     "Squad",
     "SquadMember",
     "Team",
     "Transfer",
+    "TransferPair",
+    "calculate_selling_price",
 ]

@@ -108,6 +108,7 @@ class SquadMember(DomainModel):
     team_id: UUID
     position: Position
     purchase_price: Money | None = None
+    selling_price: Money | None = None
 
 
 class Squad(DomainModel):
@@ -142,15 +143,29 @@ class Squad(DomainModel):
 
 
 class ManagerState(DomainModel):
+    """Owned squad and normal-transfer state at one decision timestamp.
+
+    ``free_transfers`` is the allowance remaining after transfers already made.
+    ``existing_points_cost`` is preserved as committed history and is sunk for any
+    incremental recommendation produced from this state.
+    """
+
     manager_id: UUID
     gameweek: GameweekNumber
     squad: Squad
     bank: Money
     free_transfers: int = Field(ge=0, le=5)
+    transfers_made: int = Field(default=0, ge=0)
+    existing_points_cost: int = Field(default=0, ge=0)
     chips: tuple[ChipState, ...] = ()
 
     @model_validator(mode="after")
-    def chips_must_be_unique_per_half(self) -> Self:
+    def validate_transfer_state_and_chips(self) -> Self:
+        if any(
+            member.purchase_price is None or member.selling_price is None
+            for member in self.squad.members
+        ):
+            raise ValueError("manager squad members require purchase and selling prices")
         keys = [(chip.chip_type, chip.half) for chip in self.chips]
         if len(set(keys)) != len(keys):
             raise ValueError("manager state cannot contain duplicate chip state for a half")

@@ -45,6 +45,19 @@ class Money(DomainModel):
         return f"£{whole}.{tenths}m"
 
 
+def calculate_selling_price(*, purchase: Money, current: Money) -> Money:
+    """Return the official FPL sale value using exact £0.1m integer units.
+
+    A price fall is realised in full. On a rise, the manager retains half the
+    increase, with odd £0.1m profits rounded down rather than to nearest.
+    """
+
+    if current.tenths_million <= purchase.tenths_million:
+        return current
+    retained_profit = (current.tenths_million - purchase.tenths_million) // 2
+    return Money(tenths_million=purchase.tenths_million + retained_profit)
+
+
 class GameweekNumber(DomainModel):
     value: int = Field(ge=1, le=38)
 
