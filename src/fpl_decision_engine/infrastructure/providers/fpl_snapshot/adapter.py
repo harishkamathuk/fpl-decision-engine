@@ -24,6 +24,7 @@ from fpl_decision_engine.ports import ProviderDataError, ProviderMappingError
 from .schemas import SourceBootstrap, SourceFixture
 
 IDENTITY_NAMESPACE = UUID("3d50b622-ccb5-5cc8-a3f5-7a61a263649b")
+FPL_CODE_PROVIDER_ID = "fpl_code"
 POSITION_BY_ELEMENT_TYPE = {
     1: Position.GOALKEEPER,
     2: Position.DEFENDER,
@@ -61,6 +62,17 @@ def _load_json(data: bytes, resource_name: str, provider_id: str) -> object:
 def _source_uuid(provider_id: str, season: str, entity_type: str, external_id: int) -> UUID:
     identity_key = f"{provider_id}:{season}:{entity_type}:{external_id}"
     return uuid5(IDENTITY_NAMESPACE, identity_key)
+
+
+def _player_external_refs(
+    provider_id: str, external_id: int, code: int | None
+) -> tuple[ExternalRef, ...]:
+    """Keep season-specific element IDs separate from stable cross-season FPL codes."""
+
+    refs = [ExternalRef(provider=provider_id, external_id=str(external_id))]
+    if code is not None:
+        refs.append(ExternalRef(provider=FPL_CODE_PROVIDER_ID, external_id=str(code)))
+    return tuple(refs)
 
 
 def _derive_season(bootstrap: SourceBootstrap, provider_id: str) -> str:
@@ -168,8 +180,8 @@ def map_snapshot(snapshot: PreparedSnapshot) -> CanonicalFplSnapshot:
                     position=position,
                     price=Money(tenths_million=source_player.now_cost),
                     active=source_player.status == "a",
-                    external_refs=(
-                        ExternalRef(provider=provider_id, external_id=str(source_player.id)),
+                    external_refs=_player_external_refs(
+                        provider_id, source_player.id, source_player.code
                     ),
                 )
             )

@@ -22,6 +22,11 @@ class SourceTeam(SourceModel):
 
 class SourcePlayer(SourceModel):
     id: int = Field(gt=0)
+    code: int | None = Field(
+        default=None,
+        gt=0,
+        description="Stable cross-season FPL code, distinct from season-specific element id",
+    )
     team: int = Field(gt=0)
     first_name: str = Field(min_length=1)
     second_name: str = Field(min_length=1)
