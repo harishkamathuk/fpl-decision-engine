@@ -22,6 +22,7 @@ class ProviderCapability(StrEnum):
     LEAGUE_STATE = "league_state"
     PROJECTIONS = "projections"
     EXPECTED_MINUTES = "expected_minutes"
+    APPEARANCE_PROBABILITY = "appearance_probability"
     START_PROBABILITY = "start_probability"
     POINT_DISTRIBUTION = "point_distribution"
     XG = "xg"
@@ -53,13 +54,21 @@ class ProviderDescriptor:
 
 @dataclass(frozen=True, slots=True)
 class ProviderProvenance:
-    """Metadata required to trace a provider response back to its source."""
+    """Metadata required to trace a provider response back to its source.
+
+    File-backed providers use source_sha256 for exact bytes and mapping_fingerprint
+    for the deterministic external-to-canonical identity map. retrieved_at records
+    local observation; payload-level generation times remain on canonical records.
+    """
 
     provider_id: str
     provider_version: str
     retrieved_at: datetime
     source_reference: str | None = None
     snapshot_id: str | None = None
+    source_sha256: str | None = None
+    mapping_fingerprint: str | None = None
+    season: str | None = None
 
     def __post_init__(self) -> None:
         if not self.provider_id.strip():
@@ -67,6 +76,15 @@ class ProviderProvenance:
         if not self.provider_version.strip():
             raise ValueError("provider_version must not be blank")
         _require_aware(self.retrieved_at, "retrieved_at")
+        for field_name, digest in (
+            ("source_sha256", self.source_sha256),
+            ("mapping_fingerprint", self.mapping_fingerprint),
+        ):
+            if digest is not None and (
+                len(digest) != 64
+                or any(character not in "0123456789abcdef" for character in digest)
+            ):
+                raise ValueError(f"{field_name} must be a lowercase SHA-256 digest")
 
 
 @dataclass(frozen=True, slots=True)

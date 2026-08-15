@@ -54,15 +54,24 @@ class Fixture(DomainModel):
 
 
 class Projection(DomainModel):
+    """One player forecast at gameweek grain.
+
+    Expected minutes may exceed 120 in double gameweeks. Point expectations and
+    percentiles may be negative because FPL scoring can be negative. Appearance
+    probability means playing any minutes; start probability is narrower. Variance is
+    expressed in squared FPL points.
+    """
+
     player_id: UUID
     gameweek: GameweekNumber
-    expected_points: float = Field(ge=0)
-    expected_minutes: float | None = Field(default=None, ge=0, le=120)
+    expected_points: float
+    expected_minutes: float | None = Field(default=None, ge=0)
+    appearance_probability: float | None = Field(default=None, ge=0, le=1)
     start_probability: float | None = Field(default=None, ge=0, le=1)
     variance: float | None = Field(default=None, ge=0)
-    p10: float | None = Field(default=None, ge=0)
-    p50: float | None = Field(default=None, ge=0)
-    p90: float | None = Field(default=None, ge=0)
+    p10: float | None = None
+    p50: float | None = None
+    p90: float | None = None
     source: str = Field(min_length=1)
     model_version: str = Field(min_length=1)
     generated_at: AwareDatetime
@@ -70,6 +79,7 @@ class Projection(DomainModel):
     @field_validator(
         "expected_points",
         "expected_minutes",
+        "appearance_probability",
         "start_probability",
         "variance",
         "p10",
@@ -85,10 +95,9 @@ class Projection(DomainModel):
     @model_validator(mode="after")
     def percentiles_must_be_ordered(self) -> Self:
         if (
-            self.p10 is not None
-            and self.p50 is not None
-            and self.p90 is not None
-            and not self.p10 <= self.p50 <= self.p90
+            (self.p10 is not None and self.p50 is not None and self.p10 > self.p50)
+            or (self.p50 is not None and self.p90 is not None and self.p50 > self.p90)
+            or (self.p10 is not None and self.p90 is not None and self.p10 > self.p90)
         ):
             raise ValueError("projection percentiles must satisfy p10 <= p50 <= p90")
         return self
