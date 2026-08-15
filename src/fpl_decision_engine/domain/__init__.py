@@ -16,6 +16,12 @@ from .models import (
     Team,
     Transfer,
 )
+from .optimisation import (
+    Formation,
+    OptimisationDiagnostic,
+    SingleGameweekOptimisationRequest,
+    SingleGameweekOptimisationResult,
+)
 from .value_objects import (
     ChipState,
     ChipStatus,
@@ -35,15 +41,19 @@ __all__ = [
     "DomainModel",
     "ExternalRef",
     "Fixture",
+    "Formation",
     "Gameweek",
     "GameweekNumber",
     "League",
     "LeagueEntry",
     "ManagerState",
     "Money",
+    "OptimisationDiagnostic",
     "Player",
     "Position",
     "Projection",
+    "SingleGameweekOptimisationRequest",
+    "SingleGameweekOptimisationResult",
     "Squad",
     "SquadMember",
     "Team",
