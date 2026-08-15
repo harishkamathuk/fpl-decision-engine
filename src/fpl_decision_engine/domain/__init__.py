@@ -13,6 +13,14 @@ from .availability import (
     EvidenceTiming,
 )
 from .base import DomainModel
+from .decision_bundle import (
+    DecisionBundleV1,
+    DecisionDeviation,
+    DecisionInputProvenance,
+    DecisionRecommendation,
+    DecisionSelection,
+    SubmittedDecision,
+)
 from .models import (
     DecisionRun,
     DecisionRunStatus,
@@ -65,8 +73,13 @@ __all__ = [
     "ChipState",
     "ChipStatus",
     "ChipType",
+    "DecisionBundleV1",
+    "DecisionDeviation",
+    "DecisionInputProvenance",
+    "DecisionRecommendation",
     "DecisionRun",
     "DecisionRunStatus",
+    "DecisionSelection",
     "DomainModel",
     "EvidenceAttribute",
     "EvidenceConfidence",
@@ -94,6 +107,7 @@ __all__ = [
     "SingleGameweekTransferOptimisationResult",
     "Squad",
     "SquadMember",
+    "SubmittedDecision",
     "Team",
     "Transfer",
     "TransferPair",
