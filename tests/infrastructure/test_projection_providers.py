@@ -187,6 +187,23 @@ def test_fpl_forecast_missing_uncertainty_remains_missing(tmp_path: Path) -> Non
     assert (projection.p10, projection.p50, projection.p90) == (None, None, None)
 
 
+def test_fpl_forecast_rejects_unsupported_future_schema(tmp_path: Path) -> None:
+    source = (PROJECTION_FIXTURES / "fpl_forecast_phase9.csv").read_text(encoding="utf-8")
+    path = write_csv(tmp_path, source.replace("phase9_frontend_v1", "phase10_frontend_v1"))
+
+    with pytest.raises(
+        ProviderDataError,
+        match="unsupported FPL Forecast schema 'phase10_frontend_v1'; supported schema is "
+        "'phase9_frontend_v1'",
+    ):
+        FplForecastCsvAdapter(
+            path,
+            canonical_players(),
+            season="2026-27",
+            observed_at=OBSERVED_AT,
+        )
+
+
 def test_duplicate_player_gameweek_rows_are_rejected(tmp_path: Path) -> None:
     header = "external_player_id,gameweek,expected_points,source,model_version,generated_at\n"
     path = write_csv(

@@ -388,6 +388,12 @@ class FplForecastCsvAdapter(_LocalCsvProjectionProvider):
             row_number: int,
         ) -> Projection:
             row = _validate_row(FplForecastRow, raw, descriptor.provider_id, row_number)
+            if row.schema_version != FPL_FORECAST_SCHEMA_VERSION:
+                raise ProviderDataError(
+                    f"unsupported FPL Forecast schema {row.schema_version!r}; "
+                    f"supported schema is {FPL_FORECAST_SCHEMA_VERSION!r}",
+                    provider_id=descriptor.provider_id,
+                )
             if row.season != season:
                 raise ProviderDataError(
                     f"FPL Forecast row {row_number} season {row.season!r} "
