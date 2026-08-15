@@ -34,6 +34,11 @@ from .optimisation import (
     SingleGameweekOptimisationRequest,
     SingleGameweekOptimisationResult,
 )
+from .planning import (
+    MultiGameweekPlanningRequest,
+    MultiGameweekPlanningResult,
+    PlannedGameweek,
+)
 from .transfers import (
     SingleGameweekTransferOptimisationRequest,
     SingleGameweekTransferOptimisationResult,
@@ -76,8 +81,11 @@ __all__ = [
     "LeagueEntry",
     "ManagerState",
     "Money",
+    "MultiGameweekPlanningRequest",
+    "MultiGameweekPlanningResult",
     "OptimisationDiagnostic",
     "Player",
+    "PlannedGameweek",
     "Position",
     "Projection",
     "SingleGameweekOptimisationRequest",
