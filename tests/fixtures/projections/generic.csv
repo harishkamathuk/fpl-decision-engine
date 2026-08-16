@@ -1,0 +1,3 @@
+external_player_id,gameweek,expected_points,source,model_version,generated_at,expected_minutes,appearance_probability,start_probability,variance,p10,p50,p90
+101,1,-0.25,synthetic-model,v1,2026-08-15T08:00:00Z,,,,,,,
+202,2,6.5,synthetic-model,v1,2026-08-15T08:00:00Z,181,0.94,0.72,4.0,-1.0,5.5,12.0
