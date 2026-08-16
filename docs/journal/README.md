@@ -70,7 +70,20 @@ Only use headings that help that day's notes.
 6. **No secrets or private operational data.** Never record credentials, cookies, personal manager data, private league data or unredistributable source payloads.
 7. **Journal substantive sessions.** Before finishing a meaningful work session, add enough notes that someone returning weeks later can recover the thread without rereading every issue and PR.
 
-Coding agents working on the repository should follow the same convention. A journal update may travel in the same feature PR as the work it describes; there is no need to create a separate process or PR solely to satisfy the journal.
+Coding agents working on the repository should follow the same convention. A journal update may travel in the same issue PR as the work it describes; there is no need to create a separate process or PR solely to satisfy the journal.
+
+### Standalone journal entries
+
+A journal-only change does not require a GitHub issue. Create a short-lived branch from `develop`
+named `journal/<YYYY-MM-DD>-<short-description>`. Eligibility depends on both that name and the
+complete pull-request diff: every changed path must remain under `docs/journal/`. The pull request
+still targets `develop`, runs normal CI and uses the repository's normal merge-commit policy.
+
+This exception exists for recording context, reflection and observations without process overhead.
+If the work grows beyond `docs/journal/`, move it to an issue-numbered branch. Code, architecture,
+dependency, workflow and policy changes do not qualify. Keep journal notes that accompany substantive
+work on the relevant issue branch, and create a separate issue for actionable work discovered while
+journalling.
 
 ## Why this exists
 
