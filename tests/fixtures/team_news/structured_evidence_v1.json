@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "source_provider": "team_news_api",
+  "source_snapshot_id": "20260814T200000Z_abc123def456",
+  "observed_at": "2026-08-14T20:15:30Z",
+  "evidence": [
+    {
+      "evidence_id": "tn-001",
+      "source_external_player_id": "10001",
+      "source_reference": "Injury update: Hamstring strain",
+      "state": "doubtful",
+      "reason": "doubtful",
+      "confidence": "ambiguous",
+      "published_at": "2026-08-14T19:30:00Z",
+      "source_text": "Player has a hamstring strain. Doubtful for GW.",
+      "attributes": {
+        "training_status": "limited",
+        "predicted_xi": false
+      }
+    },
+    {
+      "evidence_id": "tn-002",
+      "source_external_player_id": "10002",
+      "source_reference": "Suspension announced",
+      "state": "unavailable",
+      "reason": "suspension",
+      "confidence": "definitive",
+      "published_at": "2026-08-14T18:00:00Z",
+      "source_text": "Player suspended for misconduct.",
+      "attributes": {
+        "training_status": null,
+        "predicted_xi": true
+      }
+    },
+    {
+      "evidence_id": "tn-003",
+      "source_external_player_id": "10003",
+      "source_reference": "Return from injury",
+      "state": "available",
+      "reason": "available",
+      "confidence": "indicative",
+      "published_at": "2026-08-14T17:00:00Z",
+      "source_text": "Player trained fully today.",
+      "attributes": {
+        "training_status": "full"
+      }
+    }
+  ]
+}
