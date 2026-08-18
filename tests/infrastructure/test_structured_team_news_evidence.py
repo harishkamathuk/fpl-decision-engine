@@ -22,7 +22,13 @@ from fpl_decision_engine.ports import (
     ProviderMappingError,
 )
 
-PATH = "/home/harish/dev/fpl-decision-engine/tests/fixtures/team_news/structured_evidence_v1.json"
+PATH = (
+    Path(__file__).resolve().parent.parent.parent
+    / "tests"
+    / "fixtures"
+    / "team_news"
+    / "structured_evidence_v1.json"
+)
 
 
 def _players_with_team_news_refs():
@@ -119,12 +125,15 @@ def test_source_reference_and_attributes_retained() -> None:
 
 
 def test_raw_sha256() -> None:
+    import hashlib
+
     provider = StructuredTeamNewsEvidenceProvider(
         PATH,
         _players_with_team_news_refs(),
         processed_at=datetime(2026, 8, 14, 21, 0, 0, tzinfo=UTC),
     )  # noqa: E501
-    assert provider._source_sha256 is not None
+    expected_sha256 = hashlib.sha256(PATH.read_bytes()).hexdigest()
+    assert provider.evidence().provenance.source_sha256 == expected_sha256
 
 
 def test_deterministic_mapping_fingerprint_same_fingerprint() -> None:
@@ -228,6 +237,29 @@ def test_ambiguous_external_identity_raises_provider_mapping_error() -> None:
         )  # noqa: E501
 
 
+def test_multiple_external_refs_same_player_raises_provider_mapping_error() -> None:
+    """Multiple ExternalRefs for same player provider raises ProviderMappingError."""
+    p = Player(
+        id=UUID("11111111-1111-1111-1111-111111111111"),
+        team_id=UUID("22222222-2222-2222-2222-222222222222"),
+        first_name="Alice",
+        last_name="Smith",
+        web_name="ASmith",
+        position="MID",
+        price=Money(tenths_million=100),
+        active=True,
+        external_refs=(
+            {"provider": "team_news_api", "external_id": "10001"},
+            {"provider": "team_news_api", "external_id": "99999"},
+        ),
+    )
+
+    with pytest.raises(ProviderMappingError):
+        StructuredTeamNewsEvidenceProvider(
+            PATH, [p], processed_at=datetime(2026, 8, 14, 21, 0, 0, tzinfo=UTC)
+        )  # noqa: E501
+
+
 def test_malformed_json_fails() -> None:
     import tempfile
     from pathlib import Path
@@ -299,6 +331,7 @@ def test_naive_timestamps_fail() -> None:
 
 
 def test_published_at_greater_than_observed_at_fails() -> None:
+    """Invalid chronology (published_at > observed_at) is rejected as ProviderDataError."""
     import tempfile
     from pathlib import Path
 
@@ -315,7 +348,7 @@ def test_published_at_greater_than_observed_at_fails() -> None:
                 "state": "available",
                 "reason": "available",
                 "confidence": "indicative",
-                "published_at": "2026-08-14T19:00:00Z",
+                "published_at": "2026-08-14T21:00:00Z",
                 "source_text": "Test",
                 "attributes": None,
             }
@@ -327,12 +360,17 @@ def test_published_at_greater_than_observed_at_fails() -> None:
 
     players = _players_with_team_news_refs()
 
-    provider = StructuredTeamNewsEvidenceProvider(
-        tmp, players, processed_at=datetime(2026, 8, 14, 20, 30, 0, tzinfo=UTC)
-    )
-    response = provider.evidence()
-    assert len(response.data) == 1
-    assert response.data[0].published_at == datetime(2026, 8, 14, 19, 0, 0, tzinfo=UTC)
+    with pytest.raises(ProviderDataError) as exc_info:
+        provider = StructuredTeamNewsEvidenceProvider(
+            tmp, players, processed_at=datetime(2026, 8, 14, 20, 30, 0, tzinfo=UTC)
+        )
+        provider.evidence()
+
+    # Provider rejects published_at > observed_at chronology as ProviderDataError
+    assert "availability evidence cannot be observed before publication" in str(exc_info.value)
+
+    # Provider rejects published_at > observed_at chronology
+    assert "availability evidence cannot be observed before publication" in str(exc_info.value)
 
 
 def test_duplicate_evidence_ids_fail() -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID
 
 from fpl_decision_engine.application import apply_availability_exclusions, assess_availability
@@ -16,8 +17,6 @@ from fpl_decision_engine.domain import (
     Money,
     Player,
     Projection,
-)
-from fpl_decision_engine.infrastructure.optimisation import (
     SingleGameweekOptimisationRequest,
 )
 from fpl_decision_engine.infrastructure.providers.team_news.structured import (
@@ -25,7 +24,11 @@ from fpl_decision_engine.infrastructure.providers.team_news.structured import (
 )
 
 FIXTURE_PATH = (
-    "/home/harish/dev/fpl-decision-engine/tests/fixtures/team_news/structured_evidence_v1.json"
+    Path(__file__).resolve().parent.parent.parent
+    / "tests"
+    / "fixtures"
+    / "team_news"
+    / "structured_evidence_v1.json"
 )
 
 

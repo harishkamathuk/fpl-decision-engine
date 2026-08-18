@@ -203,21 +203,33 @@ class StructuredTeamNewsEvidenceProvider(NewsEvidenceProvider[AvailabilityEviden
 
         # 7. build exact ExternalRef mapping
         #    For each player, collect external_refs matching artifact.source_provider
-        #    Map external_id -> player.id
-        #    Validate each evidence record's source_external_player_id has exactly one match
+        #    Reject if any player has more than one ExternalRef for the source_provider
         external_to_player: dict[str, UUID] = {}
         ambiguity_external: set[str] = set()
+        multi_ref_same_player: set[str] = set()
 
         for player in players:
-            for ref in player.external_refs:
-                if ref.provider == artifact.source_provider:
-                    ext_id = ref.external_id
-                    if ext_id in external_to_player:
-                        existing_player_id = external_to_player[ext_id]
-                        if existing_player_id != player.id:
-                            ambiguity_external.add(ext_id)
-                    else:
-                        external_to_player[ext_id] = player.id
+            provider_refs = [
+                ref for ref in player.external_refs if ref.provider == artifact.source_provider
+            ]
+            if len(provider_refs) > 1:
+                multi_ref_same_player.update(ref.external_id for ref in provider_refs)
+            for ref in provider_refs:
+                ext_id = ref.external_id
+                if ext_id in external_to_player:
+                    existing_player_id = external_to_player[ext_id]
+                    if existing_player_id != player.id:
+                        ambiguity_external.add(ext_id)
+                else:
+                    external_to_player[ext_id] = player.id
+
+        if multi_ref_same_player:
+            ids = sorted(multi_ref_same_player)
+            raise ProviderMappingError(
+                f"canonical player has multiple ExternalRef entries for "
+                f"{artifact.source_provider}:{ids}",
+                provider_id=PROVIDER_ID,
+            )
 
         # Now validate each evidence record's source_external_player_id
         for record in artifact.evidence:
@@ -302,22 +314,28 @@ class StructuredTeamNewsEvidenceProvider(NewsEvidenceProvider[AvailabilityEviden
             # Build attributes: source_reference first, then sorted source-specific attributes
             attrs = _build_evidence_attributes(record.attributes, record.source_reference)
 
-            evidence = AvailabilityEvidence(
-                evidence_id=record.evidence_id,
-                player_id=player_id,
-                state=AvailabilityState(record.state),
-                reason=AvailabilityReason(record.reason),
-                confidence=EvidenceConfidence(record.confidence),
-                source_provider=self._artifact_source_provider,
-                source_snapshot_id=self._artifact.source_snapshot_id,
-                source_external_player_id=ext_id,
-                source_text=record.source_text,
-                reported_chance_percent=None,
-                published_at=record.published_at,
-                observed_at=self._artifact_observed_at,
-                processed_at=self._processed_at,
-                attributes=attrs,
-            )
+            try:
+                evidence = AvailabilityEvidence(
+                    evidence_id=record.evidence_id,
+                    player_id=player_id,
+                    state=AvailabilityState(record.state),
+                    reason=AvailabilityReason(record.reason),
+                    confidence=EvidenceConfidence(record.confidence),
+                    source_provider=self._artifact_source_provider,
+                    source_snapshot_id=self._artifact.source_snapshot_id,
+                    source_external_player_id=ext_id,
+                    source_text=record.source_text,
+                    reported_chance_percent=None,
+                    published_at=record.published_at,
+                    observed_at=self._artifact_observed_at,
+                    processed_at=self._processed_at,
+                    attributes=attrs,
+                )
+            except ValidationError as exc:
+                raise ProviderDataError(
+                    f"invalid evidence data: {exc}",
+                    provider_id=PROVIDER_ID,
+                ) from exc
             records.append(evidence)
 
         # Sort by evidence_id for deterministic ordering
