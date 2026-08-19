@@ -47,6 +47,7 @@ from .planning import (
     MultiGameweekPlanningResult,
     PlannedGameweek,
 )
+from .scenario import ScenarioConstraints, ScenarioDefinition
 from .transfers import (
     SingleGameweekTransferOptimisationRequest,
     SingleGameweekTransferOptimisationResult,
@@ -105,6 +106,8 @@ __all__ = [
     "SingleGameweekOptimisationResult",
     "SingleGameweekTransferOptimisationRequest",
     "SingleGameweekTransferOptimisationResult",
+    "ScenarioConstraints",
+    "ScenarioDefinition",
     "Squad",
     "SquadMember",
     "SubmittedDecision",

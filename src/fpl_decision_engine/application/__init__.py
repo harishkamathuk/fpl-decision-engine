@@ -8,6 +8,13 @@ from .decision_bundles import (
     write_decision_bundle,
 )
 from .planning import compare_planning_horizons, persist_planning_decision_run
+from .scenarios import (
+    ScenarioConstraintInput,
+    ScenarioDefinitionInput,
+    ScenarioErrorCode,
+    ScenarioValidationError,
+    parse_scenario_definition,
+)
 from .squad_runs import persist_squad_decision_run
 from .transfer_runs import persist_transfer_decision_run
 
@@ -22,4 +29,9 @@ __all__ = [
     "persist_transfer_decision_run",
     "serialize_decision_bundle",
     "write_decision_bundle",
+    "ScenarioConstraintInput",
+    "ScenarioDefinitionInput",
+    "ScenarioErrorCode",
+    "ScenarioValidationError",
+    "parse_scenario_definition",
 ]
