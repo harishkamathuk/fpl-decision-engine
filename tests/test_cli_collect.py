@@ -26,7 +26,11 @@ def _offline_collect(self: PremierLeagueInjuriesCollector) -> PremierLeagueCaptu
 
 
 def test_collect_help_exposes_bootstrap_and_output_args() -> None:
-    result = CliRunner().invoke(app, ["collect", "--help"])
+    result = CliRunner().invoke(
+        app,
+        ["collect", "--help"],
+        env={"TYPER_USE_RICH": "0"},
+    )
 
     assert result.exit_code == 0, result.output
     assert "--bootstrap" in result.output
