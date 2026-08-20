@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -19,6 +20,7 @@ FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "team_news"
 HTML_PATH = FIXTURE_ROOT / "premier_league_latest_injuries.html"
 BOOTSTRAP_PATH = FIXTURE_ROOT / "bootstrap-static-team-news.json"
 CAPTURED_AT = datetime(2026, 8, 19, 16, 0, tzinfo=UTC)
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
 def _offline_collect(self: PremierLeagueInjuriesCollector) -> PremierLeagueCapture:
@@ -26,15 +28,12 @@ def _offline_collect(self: PremierLeagueInjuriesCollector) -> PremierLeagueCaptu
 
 
 def test_collect_help_exposes_bootstrap_and_output_args() -> None:
-    result = CliRunner().invoke(
-        app,
-        ["collect", "--help"],
-        env={"TYPER_USE_RICH": "0"},
-    )
+    result = CliRunner().invoke(app, ["collect", "--help"])
 
     assert result.exit_code == 0, result.output
-    assert "--bootstrap" in result.output
-    assert "--output" in result.output
+    output = ANSI_ESCAPE_RE.sub("", result.output)
+    assert "--bootstrap" in output
+    assert "--output" in output
 
 
 def test_collect_command_runs_offline_and_reports_capture(
