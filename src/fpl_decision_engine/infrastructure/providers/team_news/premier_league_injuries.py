@@ -84,10 +84,16 @@ _MONTHS = {
     )
     for month in month
 }
-_LAST_UPDATED_RE = re.compile(
+_LAST_UPDATED_TIME_FIRST_RE = re.compile(
+    r"Last\s+updated\s*:?\s*"
+    r"(?P<hour>\d{1,2}):(?P<minute>\d{2})\s+(?P<zone>BST|GMT)\s*,\s*"
+    r"(?P<day>\d{1,2})\s+(?P<month>[A-Za-z]+)\s+(?P<year>\d{4})\s*\.?",
+    re.IGNORECASE,
+)
+_LAST_UPDATED_DATE_FIRST_RE = re.compile(
     r"Last\s+updated\s*:?\s*"
     r"(?P<day>\d{1,2})\s+(?P<month>[A-Za-z]+)\s+(?P<year>\d{4})"
-    r"(?:\s+(?:at\s+)?(?P<hour>\d{1,2}):(?P<minute>\d{2})\s*(?P<zone>BST|GMT)?)?",
+    r"(?:\s+(?:at\s+)?(?P<hour>\d{1,2}):(?P<minute>\d{2})\s*(?P<zone>BST|GMT)?)?\s*\.?",
     re.IGNORECASE,
 )
 
@@ -167,7 +173,7 @@ def _capture_timestamp(value: datetime) -> str:
 
 
 def _parse_last_updated(text: str) -> tuple[str | None, datetime | None]:
-    match = _LAST_UPDATED_RE.search(text)
+    match = _LAST_UPDATED_TIME_FIRST_RE.search(text) or _LAST_UPDATED_DATE_FIRST_RE.search(text)
     if match is None:
         return ("Last updated", None) if "last updated" in text.casefold() else (None, None)
 

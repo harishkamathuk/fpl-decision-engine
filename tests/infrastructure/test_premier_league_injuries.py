@@ -23,7 +23,7 @@ from fpl_decision_engine.ports import ProviderDataError, ProviderMappingError
 FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "team_news"
 HTML_PATH = FIXTURE_ROOT / "premier_league_latest_injuries.html"
 BOOTSTRAP_PATH = FIXTURE_ROOT / "bootstrap-static-team-news.json"
-CAPTURED_AT = datetime(2026, 8, 19, 15, 0, tzinfo=UTC)
+CAPTURED_AT = datetime(2026, 8, 19, 16, 0, tzinfo=UTC)
 
 
 def _players() -> tuple[Player, ...]:
@@ -120,27 +120,38 @@ def test_raw_capture_hash_and_manifest_are_exact(tmp_path: Path) -> None:
     assert manifest["logical_source_page"] == "https://www.premierleague.com/en/latest-player-injuries"
     assert manifest["http_status"] == 200
     assert manifest["content_type"] == "text/html;charset=utf-8"
-    assert manifest["page_last_updated_text"] == "Last updated: 19 August 2026 at 14:30 BST"
+    assert manifest["page_last_updated_text"] == "Last updated: 16:51 BST, 19 Aug 2026."
     assert manifest["parser_version"] == "1"
 
 
-def test_page_last_updated_uses_uk_bst_and_is_published_at(tmp_path: Path) -> None:
+def test_page_last_updated_uses_live_uk_bst_format_and_is_published_at(
+    tmp_path: Path,
+) -> None:
     parsed = parse_injury_page(_html())
+    assert parsed.page_last_updated_text == "Last updated: 16:51 BST, 19 Aug 2026."
     assert parsed.page_last_updated_at is not None
     assert parsed.page_last_updated_at.astimezone(UTC) == datetime(
-        2026, 8, 19, 13, 30, tzinfo=UTC
+        2026, 8, 19, 15, 51, tzinfo=UTC
     )
 
     result = _collector(tmp_path).collect_response(_html(), captured_at=CAPTURED_AT)
     artifact = _load_json(result.path / "structured-evidence.json")
     evidence = artifact["evidence"]
     assert isinstance(evidence, list)
-    assert evidence[0]["published_at"] == "2026-08-19T14:30:00+01:00"
+    assert evidence[0]["published_at"] == "2026-08-19T16:51:00+01:00"
+
+
+def test_page_last_updated_uses_uk_gmt(tmp_path: Path) -> None:
+    source = _html().replace(b"16:51 BST, 19 Aug 2026.", b"15:51 GMT, 19 Aug 2026.")
+    parsed = parse_injury_page(source)
+
+    assert parsed.page_last_updated_text == "Last updated: 15:51 GMT, 19 Aug 2026."
+    assert parsed.page_last_updated_at == datetime(2026, 8, 19, 15, 51, tzinfo=UTC)
 
 
 def test_missing_publication_timestamp_remains_null(tmp_path: Path) -> None:
     source = _html().replace(
-        b"Last updated: 19 August 2026 at 14:30 BST", b"Last updated"
+        b"Last updated: 16:51 BST, 19 Aug 2026.", b"Last updated"
     )
     result = _collector(tmp_path).collect_response(source, captured_at=CAPTURED_AT)
     artifact = _load_json(result.path / "structured-evidence.json")
