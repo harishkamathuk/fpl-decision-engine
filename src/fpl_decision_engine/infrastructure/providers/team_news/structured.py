@@ -194,14 +194,14 @@ class StructuredTeamNewsEvidenceProvider(NewsEvidenceProvider[AvailabilityEviden
                 provider_id=PROVIDER_ID,
             ) from exc
 
-        # 5. require processed_at to be timezone-aware
-        _require_aware(processed_at, "processed_at")
-
-        # 6. require processed_at >= artifact.observed_at
+        # 5. require processed_at >= artifact.observed_at
         if processed_at < artifact.observed_at:
-            raise ValueError("processed_at cannot precede artifact observed_at")
+            raise ProviderDataError(
+                "processed_at cannot precede artifact observed_at",
+                provider_id=PROVIDER_ID,
+            )
 
-        # 7. build exact ExternalRef mapping
+        # 6. build exact ExternalRef mapping
         #    For each player, collect external_refs matching artifact.source_provider
         #    Reject if any player has more than one ExternalRef for the source_provider
         external_to_player: dict[str, UUID] = {}

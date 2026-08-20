@@ -330,6 +330,20 @@ def test_naive_timestamps_fail() -> None:
         )  # noqa: E501
 
 
+def test_processed_at_before_observed_at_fails() -> None:
+    """Invalid processing chronology is exposed as a provider data error."""
+    processed_at = datetime(2026, 8, 14, 20, 0, 0, tzinfo=UTC)
+
+    with pytest.raises(ProviderDataError) as exc_info:
+        StructuredTeamNewsEvidenceProvider(
+            PATH,
+            _players_with_team_news_refs(),
+            processed_at=processed_at,
+        )
+
+    assert str(exc_info.value) == "processed_at cannot precede artifact observed_at"
+
+
 def test_published_at_greater_than_observed_at_fails() -> None:
     """Invalid chronology (published_at > observed_at) is rejected as ProviderDataError."""
     import tempfile
@@ -362,7 +376,7 @@ def test_published_at_greater_than_observed_at_fails() -> None:
 
     with pytest.raises(ProviderDataError) as exc_info:
         provider = StructuredTeamNewsEvidenceProvider(
-            tmp, players, processed_at=datetime(2026, 8, 14, 20, 30, 0, tzinfo=UTC)
+            tmp, players, processed_at=datetime(2026, 8, 14, 21, 0, 0, tzinfo=UTC)
         )
         provider.evidence()
 
