@@ -18,6 +18,7 @@ from .contracts import (
     ComparisonSection,
     DecisionEvaluationV1,
     ForecastObservation,
+    FrozenInputProvenance,
     HumanDecisionEvaluation,
     ScenarioEvaluation,
     ValidationSection,
@@ -503,6 +504,18 @@ def evaluate_decision(
         season=baseline_bundle.season,
         gameweek=baseline_bundle.gameweek,
         decision_cutoff=decision_cutoff,
+        frozen_input_provenance=FrozenInputProvenance(
+            official_snapshot_id=baseline_bundle.inputs.official_snapshot_id,
+            official_snapshot_sha256=baseline_bundle.inputs.official_snapshot_sha256,
+            projection_sha256=baseline_bundle.inputs.projection_sha256,
+            projection_model_version=baseline_bundle.inputs.projection_model_version,
+            projection_generated_at=baseline_bundle.inputs.projection_generated_at,
+            availability_assessment_reference=(
+                baseline_bundle.inputs.availability_assessment_reference
+            ),
+            availability_cutoff_at=baseline_bundle.inputs.availability_cutoff_at,
+            code_revision=baseline_bundle.code_revision,
+        ),
         baseline=baseline_eval,
         scenarios=tuple(scenario_evals),
         human_decision=human_eval,

@@ -395,6 +395,97 @@ def test_scenario_order_is_preserved_in_serialization() -> None:
     # by scenario_id, by projected_points, or by any other field.
 
 
+# --- Frozen input provenance tests ---
+
+
+def test_frozen_input_provenance_serializes_deterministically() -> None:
+    """Identical frozen input provenance serializes to identical bytes."""
+    evaluation = _build_evaluation()
+
+    bytes_a = serialize_decision_evaluation(evaluation)
+    bytes_b = serialize_decision_evaluation(evaluation)
+
+    assert bytes_a == bytes_b
+
+    payload = json.loads(bytes_a)
+    provenance = payload["frozen_input_provenance"]
+
+    # The frozen decision basis is preserved and matches the baseline inputs.
+    assert provenance["official_snapshot_id"] == "20260815T084445Z_c3e7b73647df"
+    assert provenance["official_snapshot_sha256"] == "a" * 64
+    assert provenance["projection_sha256"] == "b" * 64
+    assert provenance["projection_model_version"] == "phase9_frontend_v1:run-20260811"
+    assert provenance["projection_generated_at"] == (
+        GENERATED_AT.astimezone(UTC)
+        .isoformat(timespec="microseconds")
+        .replace("+00:00", "Z")
+    )
+    assert provenance["availability_assessment_reference"] == (
+        "state/availability/gw1.json"
+    )
+    assert provenance["availability_cutoff_at"] == (
+        DECISION_AT.astimezone(UTC)
+        .isoformat(timespec="microseconds")
+        .replace("+00:00", "Z")
+    )
+    assert provenance["code_revision"] == "release-deadbeef"
+
+
+def test_changing_projection_sha_changes_serialized_bytes() -> None:
+    """A different projection SHA-256 changes the serialized evaluation bytes."""
+    evaluation = _build_evaluation()
+
+    # Same evaluation but with a different projection SHA-256 in the inputs.
+    inputs = _make_provenance().model_copy(update={"projection_sha256": "c" * 64})
+    request = _make_request()
+    result = HighsSingleGameweekOptimiser().optimise(request)
+    different_bundle = build_decision_bundle(
+        run_id=BASELINE_RUN_ID,
+        decision_at=DECISION_AT,
+        season="2026-27",
+        code_revision="release-deadbeef",
+        config_fingerprint="sha256:config",
+        inputs=inputs,
+        request=request,
+        result=result,
+    )
+    different_evaluation = evaluate_decision(
+        baseline_bundle=different_bundle,
+        baseline_run=_make_decision_run(),
+        outcome=_make_outcome(baseline_bundle=different_bundle),
+    )
+
+    assert different_evaluation.frozen_input_provenance.projection_sha256 == "c" * 64
+    assert serialize_decision_evaluation(
+        different_evaluation
+    ) != serialize_decision_evaluation(evaluation)
+
+
+def test_persisted_evaluation_contains_frozen_input_provenance(tmp_path) -> None:
+    """The persisted evaluation artefact preserves the frozen input provenance."""
+    evaluation = _build_evaluation()
+
+    artifact = write_decision_evaluation(evaluation, state_root=tmp_path / "state")
+    persisted = json.loads(artifact.path.read_bytes())
+
+    provenance = persisted["frozen_input_provenance"]
+    assert provenance["official_snapshot_id"] == "20260815T084445Z_c3e7b73647df"
+    assert provenance["official_snapshot_sha256"] == "a" * 64
+    assert provenance["projection_sha256"] == "b" * 64
+    assert provenance["projection_model_version"] == "phase9_frontend_v1:run-20260811"
+    assert provenance["projection_generated_at"] is not None
+    assert provenance["availability_assessment_reference"] == (
+        "state/availability/gw1.json"
+    )
+    assert provenance["availability_cutoff_at"] is not None
+    assert provenance["code_revision"] == "release-deadbeef"
+
+    # The provenance is addressable as part of the immutable content hash.
+    assert artifact.sha256 == hashlib.sha256(
+        serialize_decision_evaluation(evaluation)
+    ).hexdigest()
+
+
 # --- Content-addressed persistence tests ---
 
 

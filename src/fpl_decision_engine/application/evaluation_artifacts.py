@@ -46,6 +46,7 @@ def serialize_decision_evaluation(evaluation: DecisionEvaluationV1) -> bytes:
     human = evaluation.human_decision
     comparison = evaluation.comparison
     validation = evaluation.validation
+    frozen = evaluation.frozen_input_provenance
 
     baseline_payload = {
         "baseline_proven_optimal": baseline.baseline_proven_optimal,
@@ -119,8 +120,26 @@ def serialize_decision_evaluation(evaluation: DecisionEvaluationV1) -> bytes:
             }
         )
 
+    frozen_input_payload = {
+        "availability_assessment_reference": (
+            frozen.availability_assessment_reference
+        ),
+        "availability_cutoff_at": (
+            _timestamp(frozen.availability_cutoff_at)
+            if frozen.availability_cutoff_at is not None
+            else None
+        ),
+        "code_revision": frozen.code_revision,
+        "official_snapshot_id": frozen.official_snapshot_id,
+        "official_snapshot_sha256": frozen.official_snapshot_sha256,
+        "projection_generated_at": _timestamp(frozen.projection_generated_at),
+        "projection_model_version": frozen.projection_model_version,
+        "projection_sha256": frozen.projection_sha256,
+    }
+
     payload = {
         "baseline": baseline_payload,
+        "frozen_input_provenance": frozen_input_payload,
         "comparison": comparison_payload,
         "decision_cutoff": _timestamp(evaluation.decision_cutoff),
         "forecast_observations": observations_payload,

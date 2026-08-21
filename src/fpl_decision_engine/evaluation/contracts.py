@@ -5,10 +5,52 @@ from __future__ import annotations
 from typing import Self
 from uuid import UUID
 
-from pydantic import AwareDatetime, Field, field_validator, model_validator
+from pydantic import (
+    AwareDatetime,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from fpl_decision_engine.domain.base import DomainModel
 from fpl_decision_engine.domain.value_objects import GameweekNumber
+
+
+class FrozenInputProvenance(DomainModel):
+    """Frozen input basis that the evaluated decision was made on.
+
+    Preserves the exact provenance fields the evaluator requires baseline,
+    scenarios and candidate bundles to share, so a future reader can
+    understand the frozen decision basis without reconstructing it from
+    unrelated run artefacts.
+
+    ``config_fingerprint`` is intentionally absent: it is an opaque
+    caller-supplied value excluded from frozen input comparison.
+    """
+
+    official_snapshot_id: str | None = None
+    official_snapshot_sha256: str | None = None
+    projection_sha256: str | None = None
+    projection_model_version: str = Field(min_length=1)
+    projection_generated_at: AwareDatetime
+    availability_assessment_reference: str | None = None
+    availability_cutoff_at: AwareDatetime | None = None
+    code_revision: str = Field(min_length=1)
+
+    @field_validator("official_snapshot_sha256", "projection_sha256")
+    @classmethod
+    def hashes_are_lowercase_sha256(
+        cls, value: str | None, info: ValidationInfo
+    ) -> str | None:
+        if value is not None and (
+            len(value) != 64
+            or any(character not in "0123456789abcdef" for character in value)
+        ):
+            raise ValueError(
+                f"{info.field_name or 'digest'} must be a lowercase SHA-256 digest"
+            )
+        return value
 
 
 class BaselineEvaluation(DomainModel):
@@ -89,6 +131,7 @@ class DecisionEvaluationV1(DomainModel):
     gameweek: GameweekNumber
     decision_cutoff: AwareDatetime
 
+    frozen_input_provenance: FrozenInputProvenance
     baseline: BaselineEvaluation
     scenarios: tuple[ScenarioEvaluation, ...] = ()
     human_decision: HumanDecisionEvaluation
