@@ -1,4 +1,4 @@
-# FPL Decision Engine
+# Touchline
 
 An open-source, local-first decision-support engine for Fantasy Premier League.
 
