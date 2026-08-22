@@ -1,17 +1,21 @@
-"""CLI wiring for the Touchline run-record provenance ledger.
+"""CLI wiring for the Touchline run-record provenance ledger and doctor diagnostics.
 
 Operators record and inspect run provenance through typed commands instead of manual
-JSON edits; every mutation is validated and committed atomically by the ledger.
+JSON edits; every mutation is validated and committed atomically by the ledger. The
+``doctor`` command diagnoses environment, repository and state-root readiness
+before a Gameweek run without mutating anything.
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Annotated, NoReturn
 from uuid import UUID, uuid4
 
 import typer
 
+from fpl_decision_engine.application.doctor import DiagnosticStatus, DoctorService
 from fpl_decision_engine.application.run_record_service import RunRecordService
 from fpl_decision_engine.domain.run_record import (
     CloseOutcome,
@@ -27,6 +31,37 @@ run_record_app = typer.Typer(
     no_args_is_help=True, help="Typed, atomic run-record provenance ledger"
 )
 app.add_typer(run_record_app, name="run-record")
+
+
+@app.command("doctor")
+def doctor_command(
+    state_root: Annotated[
+        Path, typer.Option("--state-root", help="State root to diagnose.")
+    ] = Path("state/run-records"),
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Emit the report as machine-readable JSON instead of human output.",
+        ),
+    ] = False,
+) -> None:
+    """Diagnose environment, repository and state-root readiness before a run.
+
+    Read-only and deterministic: every check prints an explicit PASS/WARN/FAIL with
+    remediation for failures. Exit status is 0 only when no check failed.
+    """
+    report = DoctorService(cwd=Path.cwd(), state_root=state_root).run()
+    if json_output:
+        typer.echo(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+    else:
+        for check in report.checks:
+            typer.echo(f"{check.status.value}  {check.identifier}  {check.message}")
+            if check.remediation is not None:
+                typer.echo(f"      remediation: {check.remediation}")
+        failed = sum(1 for check in report.checks if check.status is DiagnosticStatus.FAIL)
+        typer.echo(f"doctor: {len(report.checks)} checks, {failed} failed")
+    raise typer.Exit(code=0 if report.ok else 1)
 
 
 def _run_record_options(
