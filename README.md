@@ -151,6 +151,21 @@ uv run fpl sync --source snapshot --input <directory-or-manifest>
 
 The input must contain `bootstrap-static.json` and `fixtures.json`, either directly or referenced by a `manifest.json`. Successful imports preserve exact bytes below `data/raw/<provider>/<season>/<snapshot-id>/`, with per-object SHA-256 hashes and metadata. Identical re-imports reuse the snapshot; conflicting evidence is never overwritten.
 
+## Run-record provenance ledger
+
+Gameweek run provenance is recorded through the typed `touchline run-record` interface instead of manual JSON edits:
+
+```bash
+uv run touchline run-record create --season 2026-27 --gameweek 1 --mandatory-stage ingest --mandatory-stage optimise
+uv run touchline run-record stage <run-id> ingest --status running
+uv run touchline run-record stage <run-id> ingest --status pass
+uv run touchline run-record artefact <run-id> --name bundle --reference state/decision-bundles/... --sha256 <hex>
+uv run touchline run-record close <run-id> --outcome completed
+uv run touchline run-record promote <run-id> --by <operator> --reason <text>
+```
+
+Each run is one schema-validated JSON document under the ignored `state/run-records/` directory (override with `--state-root`). Writes validate before commit and replace the document atomically; an invalid transition or hash leaves the previous record untouched. `previous_run_id` lineage is explicit — an omitted id deterministically resolves the current authoritative run for the same season/Gameweek, never a file timestamp. Stage states follow the approved transition set (`PENDING → RUNNING → PASS/WARN/FAIL`, `PENDING → BLOCKED`); retries append new immutable attempts. Only a completed run can be promoted to authoritative, and promotion records an attributable approval event. See `uv run touchline run-record --help` for all commands.
+
 ## Branch and contribution model
 
 - `main` — stable/releasable code only;

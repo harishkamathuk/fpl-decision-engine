@@ -47,6 +47,17 @@ from .planning import (
     MultiGameweekPlanningResult,
     PlannedGameweek,
 )
+from .run_record import (
+    AuthorityEvent,
+    CloseOutcome,
+    LegacyRunRecord,
+    RecordedDecision,
+    RunArtefact,
+    RunRecord,
+    RunState,
+    StageAttempt,
+    StageState,
+)
 from .scenario import ScenarioConstraints, ScenarioDefinition
 from .transfers import (
     SingleGameweekTransferOptimisationRequest,
@@ -102,6 +113,13 @@ __all__ = [
     "PlannedGameweek",
     "Position",
     "Projection",
+    "AuthorityEvent",
+    "CloseOutcome",
+    "LegacyRunRecord",
+    "RecordedDecision",
+    "RunArtefact",
+    "RunRecord",
+    "RunState",
     "SingleGameweekOptimisationRequest",
     "SingleGameweekOptimisationResult",
     "SingleGameweekTransferOptimisationRequest",
@@ -110,6 +128,8 @@ __all__ = [
     "ScenarioDefinition",
     "Squad",
     "SquadMember",
+    "StageAttempt",
+    "StageState",
     "SubmittedDecision",
     "Team",
     "Transfer",

@@ -22,6 +22,7 @@ dependencies = [
 
 [project.scripts]
 fpl = "fpl_decision_engine.cli:app"
+touchline = "fpl_decision_engine.touchline_cli:app"
 
 [dependency-groups]
 dev = [
@@ -29,6 +30,7 @@ dev = [
   "pytest",
   "pytest-cov",
   "ruff",
+  "tzdata>=2026.3",
 ]
 
 [tool.hatch.build.targets.wheel]
