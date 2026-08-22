@@ -31,6 +31,16 @@ from .providers import (
     PlayerDataProvider,
     ProjectionProvider,
 )
+from .run_records import (
+    InvalidPreviousRunReference,
+    InvalidRunRecord,
+    InvalidRunStateTransition,
+    InvalidStageTransition,
+    RunRecordConflict,
+    RunRecordError,
+    RunRecordNotFound,
+    RunRecordRepository,
+)
 from .types import (
     Freshness,
     ProviderCapability,
@@ -46,6 +56,10 @@ __all__ = [
     "DatasetArtifact",
     "DecisionRunRepository",
     "ImmutableRegistrationConflict",
+    "InvalidPreviousRunReference",
+    "InvalidRunRecord",
+    "InvalidRunStateTransition",
+    "InvalidStageTransition",
     "PersistenceError",
     "Freshness",
     "LeagueProvider",
@@ -68,6 +82,10 @@ __all__ = [
     "ProviderRateLimitError",
     "ProviderResponse",
     "ProviderUnavailableError",
+    "RunRecordConflict",
+    "RunRecordError",
+    "RunRecordNotFound",
+    "RunRecordRepository",
     "SnapshotCatalog",
     "SnapshotRegistration",
     "SourceObjectHash",
