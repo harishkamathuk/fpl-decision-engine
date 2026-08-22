@@ -41,21 +41,26 @@ from fpl_decision_engine.ports.run_records import (
     RunRecordNotFound,
 )
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+SUPPORTED_SCHEMA_VERSIONS = (1, SCHEMA_VERSION)
 
 
 def serialize_run_record(record: RunRecord) -> str:
-    """Return the on-disk JSON document for a valid current-format record."""
+    """Return version-aware JSON without adding v2 fields to the frozen v1 contract."""
+
+    if record.schema_version == 1:
+        return record.model_dump_json(indent=2, exclude={"evidence_identity"}) + "\n"
     return record.model_dump_json(indent=2) + "\n"
 
 
 def parse_run_record(raw: str) -> RunRecord | LegacyRunRecord:
-    """Parse and strictly validate a run-record document.
+    """Dispatch run-record parsing explicitly by declared schema version.
 
-    Documents without a ``schema_version`` are treated as legacy and read best-effort;
-    documents claiming a newer schema version are rejected as unsupported rather than
-    silently downgraded.
+    Documents without a ``schema_version`` are treated as legacy and read best-effort.
+    Version 1 preserves the exact historical #81 field contract; version 2 adds optional
+    evidence binding. Unsupported versions fail rather than being downgraded.
     """
+
     try:
         parsed: object = json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -68,10 +73,33 @@ def parse_run_record(raw: str) -> RunRecord | LegacyRunRecord:
         return parse_legacy_run_record(data)
     if isinstance(version, bool) or not isinstance(version, int):
         raise InvalidRunRecord("schema_version must be an integer")
-    if version != SCHEMA_VERSION:
-        raise UnsupportedSchemaVersion(
-            f"unsupported run-record schema_version {version}; reader supports {SCHEMA_VERSION}"
+    if version == 1:
+        return _parse_run_record_v1(data)
+    if version == SCHEMA_VERSION:
+        return _parse_run_record_v2(data)
+    raise UnsupportedSchemaVersion(
+        f"unsupported run-record schema_version {version}; reader supports "
+        f"{', '.join(str(item) for item in SUPPORTED_SCHEMA_VERSIONS)}"
+    )
+
+
+def _parse_run_record_v1(data: dict[str, object]) -> RunRecord:
+    """Parse the frozen #81 v1 wire contract without accepting v2-only fields."""
+
+    if "evidence_identity" in data:
+        raise InvalidRunRecord(
+            "invalid schema_version 1 run record: evidence_identity is a v2-only field"
         )
+    return _validate_current_run_record(data)
+
+
+def _parse_run_record_v2(data: dict[str, object]) -> RunRecord:
+    """Parse the #83 v2 wire contract, including an optional evidence binding."""
+
+    return _validate_current_run_record(data)
+
+
+def _validate_current_run_record(data: dict[str, object]) -> RunRecord:
     try:
         return RunRecord.model_validate(data)
     except ValidationError as exc:
@@ -248,6 +276,7 @@ def parse_legacy_run_record(data: dict[str, object]) -> LegacyRunRecord:
         closed_at=best_effort("closed_at", aware_timestamp),
         code_revision=best_effort("code_revision", non_blank),
         config_fingerprint=best_effort("config_fingerprint", non_blank),
+        evidence_identity=best_effort("evidence_identity", non_blank),
         diagnostic_summary=best_effort("diagnostic_summary", non_blank),
         parse_issues=tuple(issues),
         raw=data,

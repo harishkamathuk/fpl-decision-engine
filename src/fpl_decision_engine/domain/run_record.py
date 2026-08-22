@@ -18,6 +18,10 @@ from pydantic import AwareDatetime, ConfigDict, Field, field_validator, model_va
 
 from .base import DomainModel
 
+GAMEWEEK_EVIDENCE_ARTEFACT_KIND = "gameweek-evidence-manifest-v1"
+RUN_RECORD_SCHEMA_V1 = 1
+RUN_RECORD_SCHEMA_V2 = 2
+
 
 class StageState(StrEnum):
     """Approved stage attempt states from the Issue #80 contract."""
@@ -123,9 +127,7 @@ class RecordedDecision(DomainModel):
     @field_validator("sha256")
     @classmethod
     def lowercase_hex_digest(cls, value: str | None) -> str | None:
-        if value is not None and any(
-            character not in "0123456789abcdef" for character in value
-        ):
+        if value is not None and any(character not in "0123456789abcdef" for character in value):
             raise ValueError("sha256 must be a lowercase hexadecimal SHA-256 digest")
         return value
 
@@ -144,7 +146,7 @@ class AuthorityEvent(DomainModel):
 
 
 class RunRecord(DomainModel):
-    """Current-format control-plane run record (``schema_version`` 1).
+    """Schema-valid control-plane run record (historical v1 or evidence-aware v2).
 
     ``previous_run_id`` is explicit lineage, never derived from filesystem recency.
     ``mandatory_stages`` declares the run contract at creation; a run is only
@@ -152,9 +154,15 @@ class RunRecord(DomainModel):
     mandatory stage remains FAIL/BLOCKED. ``failed`` requires mandatory execution to
     have failed. Only a completed run may become ``authoritative``, and only via a
     recorded ``AuthorityEvent``.
+
+    ``schema_version`` 1 is the frozen historical #81 wire contract and has no
+    Gameweek evidence field. New records default to version 2 and may remain unbound.
+    Binding establishes the atomic ``evidence_identity`` plus manifest-artefact
+    relationship, explicitly upgrading v1 or completing an unbound v2. Reads and
+    unrelated mutations preserve their existing version.
     """
 
-    schema_version: int = 1
+    schema_version: int = RUN_RECORD_SCHEMA_V2
     run_id: UUID
     season: str = Field(pattern=r"^\d{4}-\d{2}$")
     gameweek: int = Field(ge=1, le=38)
@@ -169,13 +177,17 @@ class RunRecord(DomainModel):
     closed_at: AwareDatetime | None = None
     code_revision: str | None = None
     config_fingerprint: str | None = None
+    evidence_identity: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
     diagnostic_summary: str | None = None
 
     @field_validator("schema_version")
     @classmethod
-    def supports_only_v1(cls, value: int) -> int:
-        if value != 1:
-            raise ValueError(f"unsupported run-record schema_version {value}; supported: 1")
+    def supports_known_versions(cls, value: int) -> int:
+        if value not in (RUN_RECORD_SCHEMA_V1, RUN_RECORD_SCHEMA_V2):
+            raise ValueError(
+                f"unsupported run-record schema_version {value}; supported: "
+                f"{RUN_RECORD_SCHEMA_V1}, {RUN_RECORD_SCHEMA_V2}"
+            )
         return value
 
     @field_validator("mandatory_stages")
@@ -208,6 +220,24 @@ class RunRecord(DomainModel):
             per_stage[attempt.stage] = attempt.attempt
         if len(self.authority_events) > 1:
             raise ValueError("a run record may hold at most one authority event")
+        evidence_artefacts = tuple(
+            artefact
+            for artefact in self.artefacts
+            if artefact.kind == GAMEWEEK_EVIDENCE_ARTEFACT_KIND
+        )
+        if self.schema_version == RUN_RECORD_SCHEMA_V1 and (
+            self.evidence_identity is not None or evidence_artefacts
+        ):
+            raise ValueError(
+                "run-record schema_version 1 cannot contain Gameweek evidence; "
+                "binding evidence requires the explicit schema_version 2 transition"
+            )
+        if self.evidence_identity is None and evidence_artefacts:
+            raise ValueError("a Gameweek evidence manifest artefact requires evidence_identity")
+        if self.evidence_identity is not None and len(evidence_artefacts) != 1:
+            raise ValueError(
+                "evidence_identity requires exactly one Gameweek evidence manifest artefact"
+            )
         if self.state is RunState.PROVISIONAL:
             if self.closed_at is not None:
                 raise ValueError("a provisional run must not record closed_at")
@@ -285,6 +315,7 @@ class LegacyRunRecord(DomainModel):
     closed_at: AwareDatetime | None = None
     code_revision: str | None = None
     config_fingerprint: str | None = None
+    evidence_identity: str | None = None
     diagnostic_summary: str | None = None
     parse_issues: tuple[str, ...] = ()
     raw: dict[str, object]

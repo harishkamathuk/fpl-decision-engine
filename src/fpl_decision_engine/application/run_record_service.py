@@ -9,6 +9,7 @@ attempts and never rewrite prior attempts.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -17,7 +18,14 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
+from fpl_decision_engine.application.gameweek_evidence import (
+    GameweekEvidenceArtifact,
+    InvalidEvidenceManifest,
+    parse_gameweek_evidence_manifest,
+)
 from fpl_decision_engine.domain.run_record import (
+    GAMEWEEK_EVIDENCE_ARTEFACT_KIND,
+    RUN_RECORD_SCHEMA_V2,
     AuthorityEvent,
     CloseOutcome,
     LegacyRunRecord,
@@ -28,6 +36,7 @@ from fpl_decision_engine.domain.run_record import (
     StageAttempt,
     StageState,
 )
+from fpl_decision_engine.ports.persistence import UnsupportedSchemaVersion
 from fpl_decision_engine.ports.run_records import (
     InvalidPreviousRunReference,
     InvalidRunRecord,
@@ -316,6 +325,95 @@ class RunRecordService:
             record,
             context=f"run {run_id} artefact '{name}'",
             artefacts=record.artefacts + (artefact,),
+        )
+
+    def record_evidence_manifest(
+        self,
+        run_id: UUID,
+        *,
+        evidence_identity: str,
+        artifact: GameweekEvidenceArtifact,
+    ) -> RunRecord:
+        """Verify persisted manifest bytes, then atomically bind their identity to a run.
+
+        The typed artifact is the evidence persistence/reference seam. Its reference is
+        resolved again here; its claimed hash and identity are both verified against the
+        exact persisted bytes before the v1-to-v2 RunRecord transition is committed.
+        """
+
+        record = self._load_current(run_id)
+        self._require_provisional(record, "record evidence")
+        try:
+            manifest_bytes = artifact.read_bytes()
+        except OSError as exc:
+            raise InvalidRunRecord(
+                f"run {run_id}: cannot read persisted Gameweek evidence manifest "
+                f"{artifact.reference!r}: {exc}"
+            ) from exc
+        manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
+        if artifact.sha256 != manifest_sha256:
+            raise InvalidRunRecord(
+                f"run {run_id}: persisted Gameweek evidence manifest SHA-256 mismatch: "
+                f"claimed {artifact.sha256}, computed {manifest_sha256} from "
+                f"{artifact.reference!r}"
+            )
+        try:
+            manifest = parse_gameweek_evidence_manifest(manifest_bytes)
+        except (InvalidEvidenceManifest, UnsupportedSchemaVersion) as exc:
+            raise InvalidRunRecord(
+                f"run {run_id}: persisted Gameweek evidence manifest is invalid: {exc}"
+            ) from exc
+        if artifact.evidence_identity != manifest.evidence_identity:
+            raise InvalidRunRecord(
+                f"run {run_id}: persisted artifact claims evidence identity "
+                f"{artifact.evidence_identity}, but manifest reconstructs "
+                f"{manifest.evidence_identity}"
+            )
+        if evidence_identity != manifest.evidence_identity:
+            raise InvalidRunRecord(
+                f"run {run_id}: requested evidence identity {evidence_identity} does not "
+                f"match persisted manifest identity {manifest.evidence_identity}"
+            )
+        if record.season != manifest.season or record.gameweek != manifest.gameweek.value:
+            raise InvalidRunRecord(
+                f"run {run_id}: evidence manifest season/Gameweek "
+                f"{manifest.season}/GW{manifest.gameweek.value} does not match run "
+                f"{record.season}/GW{record.gameweek}"
+            )
+        existing = next(
+            (
+                artefact
+                for artefact in record.artefacts
+                if artefact.kind == GAMEWEEK_EVIDENCE_ARTEFACT_KIND
+            ),
+            None,
+        )
+        if existing is not None:
+            if (
+                record.evidence_identity == manifest.evidence_identity
+                and existing.reference == artifact.reference
+                and existing.sha256 == manifest_sha256
+            ):
+                return record
+            raise InvalidRunRecord(
+                f"run {run_id}: evidence is already bound to "
+                f"{record.evidence_identity} at {existing.reference}; drift requires a new run"
+            )
+        run_artefact = self._validated(
+            RunArtefact,
+            context=f"run {run_id} Gameweek evidence manifest",
+            name="gameweek-evidence",
+            reference=artifact.reference,
+            sha256=manifest_sha256,
+            kind=GAMEWEEK_EVIDENCE_ARTEFACT_KIND,
+            recorded_at=self._now(),
+        )
+        return self._commit(
+            record,
+            context=f"run {run_id} Gameweek evidence bind",
+            schema_version=RUN_RECORD_SCHEMA_V2,
+            evidence_identity=manifest.evidence_identity,
+            artefacts=record.artefacts + (run_artefact,),
         )
 
     def record_decision(
