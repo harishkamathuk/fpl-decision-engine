@@ -7,6 +7,12 @@ from .decision_bundles import (
     serialize_decision_bundle,
     write_decision_bundle,
 )
+from .doctor import (
+    DiagnosticCheck,
+    DiagnosticStatus,
+    DoctorReport,
+    DoctorService,
+)
 from .evaluation_artifacts import (
     DecisionEvaluationArtifact,
     serialize_decision_evaluation,
@@ -41,6 +47,10 @@ from .transfer_runs import persist_transfer_decision_run
 __all__ = [
     "DecisionBundleArtifact",
     "DecisionEvaluationArtifact",
+    "DiagnosticCheck",
+    "DiagnosticStatus",
+    "DoctorReport",
+    "DoctorService",
     "EvidenceComponentBytes",
     "EvidenceDriftError",
     "GameweekEvidenceArtifact",

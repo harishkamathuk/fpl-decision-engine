@@ -166,6 +166,16 @@ uv run touchline run-record promote <run-id> --by <operator> --reason <text>
 
 Each run is one schema-validated JSON document under the ignored `state/run-records/` directory (override with `--state-root`). Writes validate before commit and replace the document atomically; an invalid transition or hash leaves the previous record untouched. `previous_run_id` lineage is explicit — an omitted id deterministically resolves the current authoritative run for the same season/Gameweek, never a file timestamp. Stage states follow the approved transition set (`PENDING → RUNNING → PASS/WARN/FAIL`, `PENDING → BLOCKED`); retries append new immutable attempts. Only a completed run can be promoted to authoritative, and promotion records an attributable approval event. See `uv run touchline run-record --help` for all commands.
 
+## Doctor diagnostics
+
+Before a Gameweek run, `touchline doctor` performs deterministic, read-only readiness checks:
+
+```bash
+uv run touchline doctor --state-root state/run-records
+```
+
+It reports the release tag and commit SHA, working-tree cleanliness, state-root validity and canonical path resolution, confirmation that the state root sits outside an immutable release worktree when running from one (detached HEAD at a release tag), and the required directories, tools (git, uv) and configuration. Every check prints an explicit `PASS`/`WARN`/`FAIL` with remediation for failures; the exit status is `0` only when no check failed, and `--json` emits the same report machine-readably for scripting and future orchestration. The doctor never modifies the repository or operational state, and equivalent logical paths always resolve to the same verdict.
+
 ## Branch and contribution model
 
 - `main` — stable/releasable code only;
