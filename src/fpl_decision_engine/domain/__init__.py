@@ -21,6 +21,16 @@ from .decision_bundle import (
     DecisionSelection,
     SubmittedDecision,
 )
+from .gameweek_evidence import (
+    EVIDENCE_MANIFEST_SCHEMA_VERSION,
+    EvidenceAcquisition,
+    EvidenceArtifactReference,
+    GameweekEvidenceManifest,
+    ProjectionEvidence,
+    ProjectionUpstreamLineage,
+    SnapshotEvidence,
+    calculate_evidence_identity,
+)
 from .models import (
     DecisionRun,
     DecisionRunStatus,
@@ -48,6 +58,7 @@ from .planning import (
     PlannedGameweek,
 )
 from .run_record import (
+    GAMEWEEK_EVIDENCE_ARTEFACT_KIND,
     AuthorityEvent,
     CloseOutcome,
     LegacyRunRecord,
@@ -94,6 +105,9 @@ __all__ = [
     "DecisionSelection",
     "DomainModel",
     "EvidenceAttribute",
+    "EVIDENCE_MANIFEST_SCHEMA_VERSION",
+    "EvidenceAcquisition",
+    "EvidenceArtifactReference",
     "EvidenceConfidence",
     "EvidenceTiming",
     "EvidenceTemporalRelation",
@@ -101,6 +115,8 @@ __all__ = [
     "Fixture",
     "Formation",
     "Gameweek",
+    "GAMEWEEK_EVIDENCE_ARTEFACT_KIND",
+    "GameweekEvidenceManifest",
     "GameweekNumber",
     "League",
     "LeagueEntry",
@@ -113,6 +129,8 @@ __all__ = [
     "PlannedGameweek",
     "Position",
     "Projection",
+    "ProjectionEvidence",
+    "ProjectionUpstreamLineage",
     "AuthorityEvent",
     "CloseOutcome",
     "LegacyRunRecord",
@@ -130,9 +148,11 @@ __all__ = [
     "SquadMember",
     "StageAttempt",
     "StageState",
+    "SnapshotEvidence",
     "SubmittedDecision",
     "Team",
     "Transfer",
     "TransferPair",
+    "calculate_evidence_identity",
     "calculate_selling_price",
 ]

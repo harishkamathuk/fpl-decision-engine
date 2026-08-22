@@ -9,8 +9,10 @@ from uuid import uuid4
 import pytest
 
 from fpl_decision_engine.domain.run_record import (
+    GAMEWEEK_EVIDENCE_ARTEFACT_KIND,
     AuthorityEvent,
     LegacyRunRecord,
+    RunArtefact,
     RunRecord,
     RunState,
     StageAttempt,
@@ -55,16 +57,146 @@ def record(state: RunState = RunState.PROVISIONAL, **overrides: object) -> RunRe
     return RunRecord(**payload)
 
 
-def test_round_trip_preserves_typed_fields(tmp_path: Path) -> None:
+V1_WIRE_KEYS = {
+    "artefacts",
+    "authority_events",
+    "closed_at",
+    "code_revision",
+    "config_fingerprint",
+    "created_at",
+    "decisions",
+    "diagnostic_summary",
+    "gameweek",
+    "mandatory_stages",
+    "previous_run_id",
+    "run_id",
+    "schema_version",
+    "season",
+    "stage_attempts",
+    "state",
+}
+
+
+def test_current_unbound_record_defaults_to_schema_v2_and_round_trips(tmp_path: Path) -> None:
     ledger = RunRecordLedger(tmp_path / "state" / "run-records")
     original = record()
 
     ledger.save(original)
     loaded = ledger.get(original.run_id)
+    payload = json.loads(ledger.get_raw(original.run_id) or "{}")
 
     assert loaded == original
     assert isinstance(loaded, RunRecord)
-    assert json.loads(ledger.get_raw(original.run_id) or "{}")["schema_version"] == 1
+    assert payload["schema_version"] == 2
+    assert payload["evidence_identity"] is None
+
+
+def test_schema_v1_wire_keys_are_frozen_and_read_does_not_rewrite(tmp_path: Path) -> None:
+    ledger = RunRecordLedger(tmp_path / "state" / "run-records")
+    original = record(schema_version=1)
+    ledger.save(original)
+    raw_before = ledger.get_raw(original.run_id)
+    payload = json.loads(raw_before or "{}")
+
+    loaded = ledger.get(original.run_id)
+
+    assert set(payload) == V1_WIRE_KEYS
+    assert "evidence_identity" not in payload
+    assert isinstance(loaded, RunRecord)
+    assert loaded.schema_version == 1
+    assert loaded.evidence_identity is None
+    assert ledger.get_raw(original.run_id) == raw_before
+
+
+def test_schema_v1_parser_rejects_v2_field_even_when_null(tmp_path: Path) -> None:
+    ledger = RunRecordLedger(tmp_path / "state" / "run-records")
+    original = record(schema_version=1)
+    ledger.save(original)
+    payload = json.loads(ledger.get_raw(original.run_id) or "{}")
+    payload["evidence_identity"] = None
+    (ledger.root / f"{original.run_id}.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(InvalidRunRecord, match="v2-only field"):
+        ledger.get(original.run_id)
+
+
+def test_schema_v2_unbound_round_trip_is_valid(tmp_path: Path) -> None:
+    ledger = RunRecordLedger(tmp_path / "state" / "run-records")
+    original = record(schema_version=2, evidence_identity=None, artefacts=())
+
+    ledger.save(original)
+
+    loaded = ledger.get(original.run_id)
+    payload = json.loads(ledger.get_raw(original.run_id) or "{}")
+    assert loaded == original
+    assert payload["schema_version"] == 2
+    assert payload["evidence_identity"] is None
+
+
+def test_schema_v2_bound_round_trip_requires_and_preserves_evidence(tmp_path: Path) -> None:
+    ledger = RunRecordLedger(tmp_path / "state" / "run-records")
+    identity = f"sha256:{'e' * 64}"
+    evidence_artefact = RunArtefact(
+        name="gameweek-evidence",
+        reference="/state/evidence.json",
+        sha256="a" * 64,
+        kind=GAMEWEEK_EVIDENCE_ARTEFACT_KIND,
+        recorded_at=NOW,
+    )
+    original = record(
+        schema_version=2,
+        evidence_identity=identity,
+        artefacts=(evidence_artefact,),
+    )
+
+    ledger.save(original)
+
+    assert ledger.get(original.run_id) == original
+
+
+def test_schema_versions_reject_crossed_evidence_shapes() -> None:
+    evidence_artefact = RunArtefact(
+        name="gameweek-evidence",
+        reference="/state/evidence.json",
+        sha256="a" * 64,
+        kind=GAMEWEEK_EVIDENCE_ARTEFACT_KIND,
+        recorded_at=NOW,
+    )
+
+    with pytest.raises(ValueError, match="schema_version 1 cannot contain"):
+        record(
+            schema_version=1,
+            evidence_identity=f"sha256:{'e' * 64}",
+            artefacts=(evidence_artefact,),
+        )
+    with pytest.raises(ValueError, match="requires exactly one"):
+        record(schema_version=2, evidence_identity=f"sha256:{'e' * 64}")
+    with pytest.raises(ValueError, match="requires evidence_identity"):
+        record(schema_version=2, artefacts=(evidence_artefact,))
+
+
+def test_schema_v2_bound_record_rejects_multiple_evidence_artefacts() -> None:
+    first = RunArtefact(
+        name="gameweek-evidence",
+        reference="/state/evidence-a.json",
+        sha256="a" * 64,
+        kind=GAMEWEEK_EVIDENCE_ARTEFACT_KIND,
+        recorded_at=NOW,
+    )
+    second = RunArtefact(
+        name="gameweek-evidence-copy",
+        reference="/state/evidence-b.json",
+        sha256="b" * 64,
+        kind=GAMEWEEK_EVIDENCE_ARTEFACT_KIND,
+        recorded_at=NOW,
+    )
+
+    with pytest.raises(ValueError, match="requires exactly one"):
+        record(
+            schema_version=2,
+            evidence_identity=f"sha256:{'e' * 64}",
+            artefacts=(first, second),
+        )
 
 
 def test_create_conflict_rejected(tmp_path: Path) -> None:
@@ -126,9 +258,9 @@ def test_corrupt_json_rejected_on_read(tmp_path: Path) -> None:
 def test_unsupported_schema_version_rejected(tmp_path: Path) -> None:
     ledger = RunRecordLedger(tmp_path / "state" / "run-records")
     run_id = uuid4()
-    (ledger.root / f"{run_id}.json").write_text(json.dumps({"schema_version": 2}), encoding="utf-8")
+    (ledger.root / f"{run_id}.json").write_text(json.dumps({"schema_version": 3}), encoding="utf-8")
 
-    with pytest.raises(UnsupportedSchemaVersion, match="schema_version 2"):
+    with pytest.raises(UnsupportedSchemaVersion, match="schema_version 3"):
         ledger.get(run_id)
 
 
