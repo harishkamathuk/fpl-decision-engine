@@ -5,12 +5,10 @@
 - `main` contains only stable, releasable code.
 - `develop` is the integration branch for the next release.
 - Work is performed on short-lived branches created from `develop` and merged back through pull requests.
-- Pull-request branches targeting `develop` normally include the GitHub issue number using `<type>/<issue-number>-<short-description>`.
+- Pull-request branches targeting `develop` **must include the GitHub issue number** using `<type>/<issue-number>-<short-description>`.
 - Allowed branch types are `feature`, `fix`, `hotfix`, `chore`, `docs`, `refactor`, `test`, `perf`, `build` and `ci`.
 - Examples: `feature/1-domain-model`, `fix/27-selling-price`.
-- A standalone journal-only change may use `journal/<YYYY-MM-DD>-<short-description>` without a GitHub issue, for example `journal/2026-08-16-v0-1-0-release`. Eligibility depends on both that branch name and the complete pull-request diff, which may contain only paths under `docs/journal/`.
-- If any changed path falls outside `docs/journal/`, the branch no longer qualifies for the exception; move the work to an issue-numbered branch. Journal updates associated with substantive work remain on that work's issue branch. Code, architecture, dependency, workflow and policy changes require an issue, as does actionable work discovered while journalling.
-- CI enforces both the issue-numbered branch convention and the journal-only path restriction for pull requests into `develop`.
+- Every non-release change therefore starts with a GitHub issue; CI enforces this naming rule for pull requests into `develop`.
 - Release pull requests promote a coherent, tested baseline from `develop` to `main`; the `develop` branch itself is exempt from the issue-number naming pattern.
 
 ## Issue lifecycle

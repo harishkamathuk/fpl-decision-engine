@@ -4,13 +4,8 @@
 
 - `main` contains stable, releasable code only. `develop` is the integration branch for the next
   release.
-- Start non-release project changes from `develop` on a short-lived, issue-numbered branch following
-  `<type>/<issue-number>-<short-description>`. Standalone journal-only entries may instead use
-  `journal/<YYYY-MM-DD>-<short-description>` without an issue, provided they change only
-  `docs/journal/`. Eligibility depends on both the branch name and the complete pull-request diff;
-  any path outside `docs/journal/` removes the exception. Journal updates that accompany substantive
-  work remain on that work's issue branch; move expanded work to an issue-numbered branch rather
-  than using the exception for code, architecture, dependency, workflow or policy changes.
+- Start non-release work from `develop` on a short-lived, issue-numbered branch following
+  `<type>/<issue-number>-<short-description>`.
 - Before major implementation, perform focused OSS reconnaissance where relevant. Keep external
   schemas behind adapters rather than adopting them as canonical models.
 - Preserve inward-pointing dependencies: `domain` and `ports` must not depend on infrastructure.
