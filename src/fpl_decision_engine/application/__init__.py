@@ -1,5 +1,6 @@
 """Application use cases and orchestration."""
 
+from .analytical_artifacts import AnalyticalArtifactService
 from .availability import apply_availability_exclusions, assess_availability
 from .decision_bundles import (
     DecisionBundleArtifact,
@@ -59,6 +60,7 @@ from .squad_runs import persist_squad_decision_run
 from .transfer_runs import persist_transfer_decision_run
 
 __all__ = [
+    "AnalyticalArtifactService",
     "DecisionBundleArtifact",
     "DecisionEvaluationArtifact",
     "DiagnosticCheck",

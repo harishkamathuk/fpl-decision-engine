@@ -1,5 +1,16 @@
 """Ports defining contracts implemented by external providers and engines."""
 
+from .analytical_artifacts import (
+    AnalyticalArtifactConflict,
+    AnalyticalArtifactError,
+    AnalyticalArtifactRepository,
+    AnalyticalContent,
+    ComparisonArtifactGenerator,
+    HistoryArtifactGenerator,
+    InvalidAnalyticalArtifact,
+    PersistedAnalyticalArtifact,
+    ReviewArtifactGenerator,
+)
 from .errors import (
     ProviderAuthenticationError,
     ProviderCapabilityError,
@@ -50,6 +61,15 @@ from .types import (
 )
 
 __all__ = [
+    "AnalyticalArtifactConflict",
+    "AnalyticalArtifactError",
+    "AnalyticalArtifactRepository",
+    "AnalyticalContent",
+    "ComparisonArtifactGenerator",
+    "HistoryArtifactGenerator",
+    "InvalidAnalyticalArtifact",
+    "PersistedAnalyticalArtifact",
+    "ReviewArtifactGenerator",
     "CanonicalDatasetName",
     "CanonicalRepository",
     "CanonicalSnapshot",
