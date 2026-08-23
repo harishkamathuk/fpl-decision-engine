@@ -1,5 +1,12 @@
 """Canonical domain model for the decision engine."""
 
+from .analytical_artifact import (
+    ANALYTICAL_ARTIFACT_SCHEMA_VERSION,
+    AnalyticalArtifact,
+    AnalyticalArtifactType,
+    calculate_analysis_artifact_id,
+    calculate_analytical_content_hash,
+)
 from .availability import (
     AvailabilityAssessment,
     AvailabilityAssessmentSet,
@@ -87,6 +94,9 @@ from .value_objects import (
 )
 
 __all__ = [
+    "ANALYTICAL_ARTIFACT_SCHEMA_VERSION",
+    "AnalyticalArtifact",
+    "AnalyticalArtifactType",
     "AvailabilityAssessment",
     "AvailabilityAssessmentSet",
     "AvailabilityDisposition",
@@ -153,6 +163,8 @@ __all__ = [
     "Team",
     "Transfer",
     "TransferPair",
+    "calculate_analysis_artifact_id",
+    "calculate_analytical_content_hash",
     "calculate_evidence_identity",
     "calculate_selling_price",
 ]
