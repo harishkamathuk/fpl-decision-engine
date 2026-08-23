@@ -45,9 +45,7 @@ def test_run_record_cli_create_stage_close_flow(tmp_path: Path) -> None:
         "--state-root", str(tmp_path), "stage", run_id, "optimise", "--status", "running"
     )
     assert result.exit_code == 0, result.output
-    result = invoke(
-        "--state-root", str(tmp_path), "stage", run_id, "optimise", "--status", "pass"
-    )
+    result = invoke("--state-root", str(tmp_path), "stage", run_id, "optimise", "--status", "pass")
     assert result.exit_code == 0, result.output
 
     result = invoke("--state-root", str(tmp_path), "close", run_id, "--outcome", "completed")
@@ -147,7 +145,11 @@ def test_run_record_cli_promote_requires_completed(tmp_path: Path) -> None:
 
 
 def test_run_gameweek_cli_exposes_explicit_resume_contract() -> None:
-    result = runner.invoke(app, ["run-gameweek", "--help"])
+    result = runner.invoke(
+        app,
+        ["run-gameweek", "--help"],
+        env={"COLUMNS": "120", "LINES": "24", "TERM": "xterm-256color"},
+    )
 
     assert result.exit_code == 0, result.output
     assert "--evidence-manifest" in result.output
