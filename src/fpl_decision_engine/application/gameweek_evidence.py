@@ -90,10 +90,28 @@ class GameweekEvidenceArtifact:
         """Filesystem path for the local evidence persistence implementation."""
         return Path(self.reference)
 
-
     def read_bytes(self) -> bytes:
         """Resolve the exact persisted bytes through this typed local reference."""
         return self.path.read_bytes()
+
+
+def load_gameweek_evidence_artifact(reference: Path) -> GameweekEvidenceArtifact:
+    """Load a persisted manifest reference and derive its exact typed provenance.
+
+    The returned hash and semantic identity come from the referenced bytes rather than
+    independent caller claims. RunRecord binding verifies the same bytes again at the
+    atomic provenance boundary.
+    """
+
+    resolved = reference.resolve()
+    content = resolved.read_bytes()
+    manifest = parse_gameweek_evidence_manifest(content)
+    return GameweekEvidenceArtifact(
+        reference=str(resolved),
+        sha256=_digest(content),
+        evidence_identity=manifest.evidence_identity,
+    )
+
 
 def _digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()

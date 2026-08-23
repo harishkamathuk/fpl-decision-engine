@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import inspect
 import json
 from pathlib import Path
 from uuid import uuid4
 
 from typer.testing import CliRunner
 
-from fpl_decision_engine.touchline_cli import app
+from fpl_decision_engine.touchline_cli import app, run_gameweek_command
 
 runner = CliRunner()
 
@@ -45,9 +46,7 @@ def test_run_record_cli_create_stage_close_flow(tmp_path: Path) -> None:
         "--state-root", str(tmp_path), "stage", run_id, "optimise", "--status", "running"
     )
     assert result.exit_code == 0, result.output
-    result = invoke(
-        "--state-root", str(tmp_path), "stage", run_id, "optimise", "--status", "pass"
-    )
+    result = invoke("--state-root", str(tmp_path), "stage", run_id, "optimise", "--status", "pass")
     assert result.exit_code == 0, result.output
 
     result = invoke("--state-root", str(tmp_path), "close", run_id, "--outcome", "completed")
@@ -144,3 +143,20 @@ def test_run_record_cli_promote_requires_completed(tmp_path: Path) -> None:
     )
     assert result.exit_code == 1
     assert "only a completed run may become authoritative" in result.output
+
+
+def test_run_gameweek_cli_exposes_explicit_resume_contract() -> None:
+    sig = inspect.signature(run_gameweek_command)
+    expected_params = {
+        "evidence_manifest",
+        "code_revision",
+        "config_fingerprint",
+        "state_root",
+        "resume",
+        "run_id",
+    }
+    actual_params = set(sig.parameters.keys())
+    missing = expected_params - actual_params
+    extra = actual_params - expected_params - {"season", "gameweek"}
+    assert not missing, f"Missing parameters: {missing}"
+    assert not extra, f"Unexpected parameters: {extra}"
