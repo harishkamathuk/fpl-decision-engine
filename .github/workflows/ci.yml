@@ -13,42 +13,18 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Validate branch policy
+      - name: Validate issue-numbered branch name
         if: github.event_name == 'pull_request' && github.base_ref == 'develop'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_REF: ${{ github.head_ref }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          issue_pattern='^(feature|fix|hotfix|chore|docs|refactor|test|perf|build|ci)/[0-9]+-[a-z0-9][a-z0-9-]*$'
-          journal_pattern='^journal/[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9][a-z0-9-]*$'
-
-          if [[ "$HEAD_REF" =~ $issue_pattern ]]; then
-            exit 0
-          fi
-          if [[ ! "$HEAD_REF" =~ $journal_pattern ]]; then
-            echo "Branch '$HEAD_REF' must be issue-numbered or follow journal/<YYYY-MM-DD>-<short-description>."
+          if [[ ! "$HEAD_REF" =~ ^(feature|fix|hotfix|chore|docs|refactor|test|perf|build|ci)/[0-9]+-[a-z0-9][a-z0-9-]*$ ]]; then
+            echo "Branch '$HEAD_REF' does not follow <type>/<issue-number>-<short-description>."
             exit 1
           fi
 
-          # With rename detection disabled, both the source deletion and destination addition
-          # are checked. The excluded pathspec leaves only changes outside docs/journal/.
-          diff_status=0
-          git diff --quiet --no-renames "$BASE_SHA...$HEAD_SHA" -- . ':(exclude)docs/journal/**' || diff_status=$?
-          if [[ "$diff_status" -gt 1 ]]; then
-            echo "Unable to evaluate the complete pull-request diff."
-            exit "$diff_status"
-          fi
-          if [[ "$diff_status" -eq 1 ]]; then
-            echo "Journal-only branches may change only docs/journal/:"
-            git diff --name-only --no-renames "$BASE_SHA...$HEAD_SHA" -- . ':(exclude)docs/journal/**'
-            exit 1
-          fi
+      - name: Checkout
+        uses: actions/checkout@v7
 
       - name: Install uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
