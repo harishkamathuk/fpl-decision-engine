@@ -144,3 +144,15 @@ def test_run_record_cli_promote_requires_completed(tmp_path: Path) -> None:
     )
     assert result.exit_code == 1
     assert "only a completed run may become authoritative" in result.output
+
+
+def test_run_gameweek_cli_exposes_explicit_resume_contract() -> None:
+    result = runner.invoke(app, ["run-gameweek", "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "--evidence-manifest" in result.output
+    assert "--code-revision" in result.output
+    assert "--config-fingerprint" in result.output
+    assert "--state-root" in result.output
+    assert "--resume" in result.output
+    assert "--run-id" in result.output

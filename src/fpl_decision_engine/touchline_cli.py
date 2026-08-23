@@ -16,6 +16,15 @@ from uuid import UUID, uuid4
 import typer
 
 from fpl_decision_engine.application.doctor import DiagnosticStatus, DoctorService
+from fpl_decision_engine.application.gameweek_evidence import (
+    InvalidEvidenceManifest,
+    load_gameweek_evidence_artifact,
+)
+from fpl_decision_engine.application.orchestration import (
+    GameweekOrchestrator,
+    OrchestratorError,
+    OrchestratorRequest,
+)
 from fpl_decision_engine.application.run_record_service import RunRecordService
 from fpl_decision_engine.domain.run_record import (
     CloseOutcome,
@@ -23,7 +32,9 @@ from fpl_decision_engine.domain.run_record import (
     RunRecord,
     StageState,
 )
+from fpl_decision_engine.infrastructure.orchestration import LocalBlankSquadBaselineRunner
 from fpl_decision_engine.infrastructure.persistence.run_records import RunRecordLedger
+from fpl_decision_engine.ports.persistence import UnsupportedSchemaVersion
 from fpl_decision_engine.ports.run_records import RunRecordError
 
 app = typer.Typer(no_args_is_help=True, help="Touchline control-plane tooling")
@@ -62,6 +73,83 @@ def doctor_command(
         failed = sum(1 for check in report.checks if check.status is DiagnosticStatus.FAIL)
         typer.echo(f"doctor: {len(report.checks)} checks, {failed} failed")
     raise typer.Exit(code=0 if report.ok else 1)
+
+
+@app.command("run-gameweek")
+def run_gameweek_command(
+    season: Annotated[str, typer.Option(help="Season, e.g. 2026-27.")],
+    gameweek: Annotated[int, typer.Option(help="Gameweek number.")],
+    evidence_manifest: Annotated[
+        Path,
+        typer.Option(
+            "--evidence-manifest",
+            help="Persisted immutable Gameweek evidence manifest.",
+        ),
+    ],
+    code_revision: Annotated[
+        str, typer.Option(help="Exact code revision for reproducible resume.")
+    ],
+    config_fingerprint: Annotated[
+        str,
+        typer.Option(help="Effective baseline configuration fingerprint."),
+    ],
+    state_root: Annotated[
+        Path,
+        typer.Option(help="Operational state root containing run-records and artifacts."),
+    ] = Path("state"),
+    resume: Annotated[
+        UUID | None,
+        typer.Option(help="Existing provisional run ID to resume."),
+    ] = None,
+    run_id: Annotated[
+        UUID | None,
+        typer.Option(help="Optional explicit ID for a fresh run."),
+    ] = None,
+) -> None:
+    """Execute or explicitly resume doctor → evidence → baseline."""
+
+    if resume is not None and run_id is not None:
+        typer.echo("error: --run-id cannot be combined with --resume", err=True)
+        raise typer.Exit(code=2)
+    selected_run_id = resume or run_id or uuid4()
+    try:
+        artifact = load_gameweek_evidence_artifact(evidence_manifest)
+        records = RunRecordService(RunRecordLedger(state_root / "run-records"))
+        orchestrator = GameweekOrchestrator(
+            records,
+            doctor=DoctorService(cwd=Path.cwd(), state_root=state_root),
+            baseline=LocalBlankSquadBaselineRunner(state_root=state_root),
+        )
+        result = orchestrator.run(
+            OrchestratorRequest(
+                run_id=selected_run_id,
+                season=season,
+                gameweek=gameweek,
+                code_revision=code_revision,
+                config_fingerprint=config_fingerprint,
+                evidence_artifact=artifact,
+                resume=resume is not None,
+            )
+        )
+    except (
+        InvalidEvidenceManifest,
+        OSError,
+        OrchestratorError,
+        RunRecordError,
+        UnsupportedSchemaVersion,
+        ValueError,
+    ) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+
+    typer.echo(f"run_id: {result.record.run_id}")
+    typer.echo(f"state: {result.record.state.value}")
+    for stage, status in result.stage_statuses:
+        typer.echo(f"stage {stage}: {status.value if status is not None else 'unattempted'}")
+    typer.echo(f"next_action: {result.next_action}")
+    if result.recommendation is not None:
+        typer.echo(f"baseline_objective: {result.recommendation.primary_objective:.6f}")
+    raise typer.Exit(code=result.exit_code)
 
 
 def _run_record_options(

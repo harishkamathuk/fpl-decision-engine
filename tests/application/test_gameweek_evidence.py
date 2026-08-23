@@ -22,6 +22,7 @@ from fpl_decision_engine.application.gameweek_evidence import (
     ProjectionEvidenceInput,
     SnapshotEvidenceInput,
     build_gameweek_evidence_manifest,
+    load_gameweek_evidence_artifact,
     parse_gameweek_evidence_manifest,
     serialize_gameweek_evidence_manifest,
     snapshot_content_sha256,
@@ -422,6 +423,7 @@ def test_manifest_writer_is_idempotent_and_rejects_acquisition_collision(tmp_pat
 
     assert first == repeated
     assert parse_gameweek_evidence_manifest(first.path.read_bytes()) == manifest
+    assert load_gameweek_evidence_artifact(first.path) == first
 
     conflicting = make_manifest(
         acquisition_id=manifest.acquisition.acquisition_id,
