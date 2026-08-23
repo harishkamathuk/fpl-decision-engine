@@ -38,7 +38,7 @@ from fpl_decision_engine.domain import (
     GameweekNumber,
     ProjectionEvidence,
     ProjectionUpstreamLineage,
-    RecordedDecision,
+    RecordedDecisionV1,
     RunArtefact,
     RunRecord,
     StageAttempt,
@@ -566,7 +566,7 @@ def test_v1_to_bound_v2_preserves_all_admissible_historical_fields(tmp_path: Pat
         kind="diagnostic",
         recorded_at=OBSERVED_AT,
     )
-    decision = RecordedDecision(
+    decision = RecordedDecisionV1(
         reference="state/decision.json",
         sha256="b" * 64,
         recorded_at=OBSERVED_AT,
@@ -786,4 +786,3 @@ def test_run_record_rejects_evidence_binding_after_closure(tmp_path: Path) -> No
             evidence_identity=manifest.evidence_identity,
             artifact=artifact,
         )
-

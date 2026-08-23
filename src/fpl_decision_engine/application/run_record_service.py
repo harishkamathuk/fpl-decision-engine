@@ -23,13 +23,16 @@ from fpl_decision_engine.application.gameweek_evidence import (
     InvalidEvidenceManifest,
     parse_gameweek_evidence_manifest,
 )
+from fpl_decision_engine.domain.provenance import DecisionProvenance
 from fpl_decision_engine.domain.run_record import (
     GAMEWEEK_EVIDENCE_ARTEFACT_KIND,
+    RUN_RECORD_SCHEMA_V1,
     RUN_RECORD_SCHEMA_V2,
     AuthorityEvent,
     CloseOutcome,
     LegacyRunRecord,
     RecordedDecision,
+    RecordedDecisionV1,
     RunArtefact,
     RunRecord,
     RunState,
@@ -422,17 +425,57 @@ class RunRecordService:
         *,
         reference: str,
         sha256: str | None = None,
+        decision_run_id: UUID | None = None,
         by: str | None = None,
         summary: str | None = None,
     ) -> RunRecord:
-        """Record a decision reference; identical re-recordings are no-ops."""
+        """Record authoritative typed decision provenance; identical writes are no-ops."""
 
         record = self._load_current(run_id)
         self._require_provisional(record, "record decisions")
+        if record.schema_version == RUN_RECORD_SCHEMA_V1:
+            for existing in record.decisions:
+                if (
+                    isinstance(existing, RecordedDecisionV1)
+                    and existing.reference == reference
+                    and existing.sha256 == sha256
+                    and existing.by == by
+                    and existing.summary == summary
+                ):
+                    return record
+            historical_decision = self._validated(
+                RecordedDecisionV1,
+                context=f"run {run_id} historical decision",
+                reference=reference,
+                sha256=sha256,
+                recorded_at=self._now(),
+                by=by,
+                summary=summary,
+            )
+            return self._commit(
+                record,
+                context=f"run {run_id} historical decision",
+                decisions=record.decisions + (historical_decision,),
+            )
+        if sha256 is None:
+            raise InvalidRunRecord(f"run {run_id}: decision artefact SHA-256 is required")
+        if record.evidence_identity is None:
+            raise InvalidRunRecord(
+                f"run {run_id}: decision provenance requires an evidence-bound run"
+            )
+        provenance = self._validated(
+            DecisionProvenance,
+            context=f"run {run_id} decision provenance",
+            run_id=run_id,
+            decision_run_id=decision_run_id or run_id,
+            evidence_identity=record.evidence_identity,
+            decision_artifact_hash=sha256,
+        )
         for existing in record.decisions:
             if (
-                existing.reference == reference
-                and existing.sha256 == sha256
+                isinstance(existing, RecordedDecision)
+                and existing.reference == reference
+                and existing.provenance == provenance
                 and existing.by == by
                 and existing.summary == summary
             ):
@@ -441,7 +484,7 @@ class RunRecordService:
             RecordedDecision,
             context=f"run {run_id} decision",
             reference=reference,
-            sha256=sha256,
+            provenance=provenance,
             recorded_at=self._now(),
             by=by,
             summary=summary,

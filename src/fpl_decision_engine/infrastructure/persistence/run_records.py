@@ -28,7 +28,7 @@ from pydantic import ValidationError
 from fpl_decision_engine.domain.run_record import (
     AuthorityEvent,
     LegacyRunRecord,
-    RecordedDecision,
+    RecordedDecisionV1,
     RunArtefact,
     RunRecord,
     StageAttempt,
@@ -208,10 +208,10 @@ def parse_legacy_run_record(data: dict[str, object]) -> LegacyRunRecord:
                 issues.append(f"artefacts entry: {exc}")
         return tuple(parsed)
 
-    def decisions(value: object) -> tuple[RecordedDecision, ...]:
+    def decisions(value: object) -> tuple[RecordedDecisionV1, ...]:
         if not isinstance(value, list):
             raise ValueError("expected a list of decisions")
-        parsed: list[RecordedDecision] = []
+        parsed: list[RecordedDecisionV1] = []
         for item in cast(list[object], value):
             if not isinstance(item, dict):
                 issues.append("decisions entry: expected an object")
@@ -219,7 +219,7 @@ def parse_legacy_run_record(data: dict[str, object]) -> LegacyRunRecord:
             entry = cast(dict[str, object], item)
             try:
                 parsed.append(
-                    RecordedDecision(
+                    RecordedDecisionV1(
                         reference=non_blank(entry["reference"]),
                         sha256=optional_text(entry.get("sha256")),
                         recorded_at=aware_timestamp(entry["recorded_at"]),
