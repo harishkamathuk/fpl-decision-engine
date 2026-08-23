@@ -428,3 +428,44 @@ def test_resume_rejects_running_attempt_without_guessing_staleness(
         orchestrator.run(request(artifact, resume=True))
 
     assert ledger.get_raw(RUN_ID) == raw_before
+
+def test_resume_rejects_completed_run_without_mutation(tmp_path: Path) -> None:
+    artifact = evidence_artifact(tmp_path)
+    doctor = SequenceDoctor(report(DiagnosticStatus.PASS))
+    baseline = SequenceBaseline(baseline_outcome())
+    orchestrator, ledger = harness(tmp_path, doctor, baseline)
+
+    completed = orchestrator.run(request(artifact))
+    assert completed.record.state is RunState.COMPLETED
+    raw_before = ledger.get_raw(RUN_ID)
+
+    with pytest.raises(OrchestratorResumeError, match="only provisional"):
+        orchestrator.run(request(artifact, resume=True))
+
+    assert ledger.get_raw(RUN_ID) == raw_before
+    assert baseline.calls == [RUN_ID]
+
+
+def test_resume_rejects_legacy_run_without_mutation(tmp_path: Path) -> None:
+    import json
+
+    from fpl_decision_engine.domain.run_record import LegacyRunRecord
+
+    artifact = evidence_artifact(tmp_path)
+    ledger = RunRecordLedger(tmp_path / "state" / "run-records")
+    payload = {"run_id": str(RUN_ID), "season": "2026-27", "gameweek": 1}
+    (ledger.root / f"{RUN_ID}.json").write_text(json.dumps(payload), encoding="utf-8")
+    raw_before = ledger.get_raw(RUN_ID)
+    assert isinstance(ledger.get(RUN_ID), LegacyRunRecord)
+
+    service = RunRecordService(ledger, now=lambda: NOW)
+    orchestrator = GameweekOrchestrator(
+        service,
+        doctor=SequenceDoctor(report(DiagnosticStatus.PASS)),
+        baseline=SequenceBaseline(baseline_outcome()),
+    )
+
+    with pytest.raises(OrchestratorResumeError, match="legacy"):
+        orchestrator.run(request(artifact, resume=True))
+
+    assert ledger.get_raw(RUN_ID) == raw_before
