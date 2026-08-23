@@ -17,6 +17,7 @@ from uuid import UUID
 from pydantic import AwareDatetime, ConfigDict, Field, field_validator, model_validator
 
 from .base import DomainModel
+from .provenance import DecisionProvenance
 
 GAMEWEEK_EVIDENCE_ARTEFACT_KIND = "gameweek-evidence-manifest-v1"
 RUN_RECORD_SCHEMA_V1 = 1
@@ -115,8 +116,8 @@ class RunArtefact(DomainModel):
         return value
 
 
-class RecordedDecision(DomainModel):
-    """One recorded decision reference, for example a decision-bundle artefact."""
+class RecordedDecisionV1(DomainModel):
+    """Historical #81 decision entry retained for frozen RunRecord compatibility."""
 
     reference: str = Field(min_length=1)
     sha256: str | None = Field(default=None, min_length=64, max_length=64)
@@ -130,6 +131,22 @@ class RecordedDecision(DomainModel):
         if value is not None and any(character not in "0123456789abcdef" for character in value):
             raise ValueError("sha256 must be a lowercase hexadecimal SHA-256 digest")
         return value
+
+
+class RecordedDecision(DomainModel):
+    """One decision reference carrying a single authoritative provenance value."""
+
+    reference: str = Field(min_length=1)
+    provenance: DecisionProvenance
+    recorded_at: AwareDatetime
+    by: str | None = Field(default=None, min_length=1)
+    summary: str | None = None
+
+    @property
+    def sha256(self) -> str:
+        """Expose the authoritative artefact hash without storing duplicate provenance."""
+
+        return self.provenance.decision_artifact_hash
 
 
 class AuthorityEvent(DomainModel):
@@ -172,7 +189,7 @@ class RunRecord(DomainModel):
     state: RunState = RunState.PROVISIONAL
     stage_attempts: tuple[StageAttempt, ...] = ()
     artefacts: tuple[RunArtefact, ...] = ()
-    decisions: tuple[RecordedDecision, ...] = ()
+    decisions: tuple[RecordedDecisionV1 | RecordedDecision, ...] = ()
     authority_events: tuple[AuthorityEvent, ...] = ()
     closed_at: AwareDatetime | None = None
     code_revision: str | None = None
@@ -232,12 +249,26 @@ class RunRecord(DomainModel):
                 "run-record schema_version 1 cannot contain Gameweek evidence; "
                 "binding evidence requires the explicit schema_version 2 transition"
             )
+        if self.schema_version == RUN_RECORD_SCHEMA_V1 and any(
+            isinstance(decision, RecordedDecision) for decision in self.decisions
+        ):
+            raise ValueError(
+                "run-record schema_version 1 cannot contain typed decision provenance"
+            )
         if self.evidence_identity is None and evidence_artefacts:
             raise ValueError("a Gameweek evidence manifest artefact requires evidence_identity")
         if self.evidence_identity is not None and len(evidence_artefacts) != 1:
             raise ValueError(
                 "evidence_identity requires exactly one Gameweek evidence manifest artefact"
             )
+        for decision in self.decisions:
+            if isinstance(decision, RecordedDecision):
+                if decision.provenance.run_id != self.run_id:
+                    raise ValueError("decision provenance run_id must match the RunRecord")
+                if decision.provenance.evidence_identity != self.evidence_identity:
+                    raise ValueError(
+                        "decision provenance evidence_identity must match the RunRecord"
+                    )
         if self.state is RunState.PROVISIONAL:
             if self.closed_at is not None:
                 raise ValueError("a provisional run must not record closed_at")
@@ -310,7 +341,7 @@ class LegacyRunRecord(DomainModel):
     mandatory_stages: tuple[str, ...] = ()
     stage_attempts: tuple[StageAttempt, ...] = ()
     artefacts: tuple[RunArtefact, ...] = ()
-    decisions: tuple[RecordedDecision, ...] = ()
+    decisions: tuple[RecordedDecisionV1, ...] = ()
     authority_events: tuple[AuthorityEvent, ...] = ()
     closed_at: AwareDatetime | None = None
     code_revision: str | None = None

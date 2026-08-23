@@ -12,7 +12,8 @@ from typing import cast
 from pydantic import ValidationError
 
 from fpl_decision_engine.domain.analytical_artifact import (
-    ANALYTICAL_ARTIFACT_SCHEMA_VERSION,
+    ANALYTICAL_ARTIFACT_SCHEMA_V1,
+    SUPPORTED_ANALYTICAL_ARTIFACT_SCHEMAS,
     AnalyticalArtifact,
 )
 from fpl_decision_engine.ports.analytical_artifacts import (
@@ -25,7 +26,12 @@ from fpl_decision_engine.ports.analytical_artifacts import (
 def serialize_analytical_artifact(artifact: AnalyticalArtifact) -> bytes:
     """Return canonical UTF-8 JSON bytes for one analytical artefact."""
 
-    payload = artifact.model_dump(mode="json")
+    exclude = (
+        {"source_decision_provenance", "compared_decisions", "referenced_artifacts"}
+        if artifact.schema_version == ANALYTICAL_ARTIFACT_SCHEMA_V1
+        else None
+    )
+    payload = artifact.model_dump(mode="json", exclude=exclude)
     payload["created_at"] = artifact.created_at_utc
     return (
         json.dumps(
@@ -52,11 +58,23 @@ def parse_analytical_artifact(content: bytes) -> AnalyticalArtifact:
     version = payload.get("schema_version")
     if isinstance(version, bool) or not isinstance(version, int):
         raise InvalidAnalyticalArtifact("analytical artefact schema_version must be an integer")
-    if version != ANALYTICAL_ARTIFACT_SCHEMA_VERSION:
+    if version not in SUPPORTED_ANALYTICAL_ARTIFACT_SCHEMAS:
         raise InvalidAnalyticalArtifact(
             f"unsupported analytical artefact schema_version {version}; supported: "
-            f"{ANALYTICAL_ARTIFACT_SCHEMA_VERSION}"
+            f"{', '.join(str(item) for item in SUPPORTED_ANALYTICAL_ARTIFACT_SCHEMAS)}"
         )
+    if version == ANALYTICAL_ARTIFACT_SCHEMA_V1:
+        v2_fields = {
+            "source_decision_provenance",
+            "compared_decisions",
+            "referenced_artifacts",
+        }
+        unexpected = sorted(v2_fields.intersection(payload))
+        if unexpected:
+            raise InvalidAnalyticalArtifact(
+                "schema v1 analytical artefact contains v2-only fields: "
+                f"{', '.join(unexpected)}"
+            )
     try:
         return AnalyticalArtifact.model_validate(payload)
     except ValidationError as exc:
@@ -114,6 +132,12 @@ class FileAnalyticalArtifactRepository:
             raise InvalidAnalyticalArtifact(
                 f"analytical artefact at {path} asserts {artifact.analysis_artifact_id}, "
                 f"expected {analysis_artifact_id}"
+            )
+        expected_path = self._path(artifact)
+        if path != expected_path:
+            raise InvalidAnalyticalArtifact(
+                f"analytical artefact path {path} contradicts embedded artifact_type; "
+                f"expected {expected_path}"
             )
         return artifact
 

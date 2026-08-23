@@ -9,8 +9,11 @@ import pytest
 
 from fpl_decision_engine.application.run_record_service import RunRecordService
 from fpl_decision_engine.domain.run_record import (
+    GAMEWEEK_EVIDENCE_ARTEFACT_KIND,
     CloseOutcome,
     LegacyRunRecord,
+    RecordedDecision,
+    RunArtefact,
     RunRecord,
     RunState,
     StageState,
@@ -480,8 +483,24 @@ def test_validate_run_ok_for_valid_current_record(service: RunRecordService) -> 
     assert report.issues == ()
 
 
-def test_recording_decisions(service: RunRecordService) -> None:
+def test_recording_decisions(service: RunRecordService, ledger: RunRecordLedger) -> None:
     run = create_run(service)
+    bound = RunRecord.model_validate(
+        {
+            **run.model_dump(),
+            "evidence_identity": f"sha256:{'e' * 64}",
+            "artefacts": (
+                RunArtefact(
+                    name="gameweek-evidence",
+                    reference="state/evidence.json",
+                    sha256="e" * 64,
+                    kind=GAMEWEEK_EVIDENCE_ARTEFACT_KIND,
+                    recorded_at=START,
+                ),
+            ),
+        }
+    )
+    ledger.save(bound, expected_raw=ledger.get_raw(run.run_id))
     recorded = service.record_decision(
         run.run_id,
         reference="state/decision-bundles/2026-27/gw1/abc.json",
@@ -491,6 +510,9 @@ def test_recording_decisions(service: RunRecordService) -> None:
     )
     assert len(recorded.decisions) == 1
     assert recorded.decisions[0].reference.endswith("abc.json")
+    assert isinstance(recorded.decisions[0], RecordedDecision)
+    assert recorded.decisions[0].provenance.run_id == run.run_id
+    assert recorded.decisions[0].provenance.evidence_identity == f"sha256:{'e' * 64}"
 
     duplicate = service.record_decision(
         run.run_id,
