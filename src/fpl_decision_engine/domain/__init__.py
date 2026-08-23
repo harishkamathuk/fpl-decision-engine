@@ -1,5 +1,14 @@
 """Canonical domain model for the decision engine."""
 
+from .analytical_artifact import (
+    ANALYTICAL_ARTIFACT_SCHEMA_V1,
+    ANALYTICAL_ARTIFACT_SCHEMA_VERSION,
+    AnalyticalArtifact,
+    AnalyticalArtifactRef,
+    AnalyticalArtifactType,
+    calculate_analysis_artifact_id,
+    calculate_analytical_content_hash,
+)
 from .availability import (
     AvailabilityAssessment,
     AvailabilityAssessmentSet,
@@ -20,6 +29,16 @@ from .decision_bundle import (
     DecisionRecommendation,
     DecisionSelection,
     SubmittedDecision,
+)
+from .gameweek_evidence import (
+    EVIDENCE_MANIFEST_SCHEMA_VERSION,
+    EvidenceAcquisition,
+    EvidenceArtifactReference,
+    GameweekEvidenceManifest,
+    ProjectionEvidence,
+    ProjectionUpstreamLineage,
+    SnapshotEvidence,
+    calculate_evidence_identity,
 )
 from .models import (
     DecisionRun,
@@ -47,6 +66,21 @@ from .planning import (
     MultiGameweekPlanningResult,
     PlannedGameweek,
 )
+from .provenance import DecisionProvenance
+from .run_record import (
+    GAMEWEEK_EVIDENCE_ARTEFACT_KIND,
+    AuthorityEvent,
+    CloseOutcome,
+    LegacyRunRecord,
+    RecordedDecision,
+    RecordedDecisionV1,
+    RunArtefact,
+    RunRecord,
+    RunState,
+    StageAttempt,
+    StageState,
+)
+from .scenario import ScenarioConstraints, ScenarioDefinition
 from .transfers import (
     SingleGameweekTransferOptimisationRequest,
     SingleGameweekTransferOptimisationResult,
@@ -64,6 +98,11 @@ from .value_objects import (
 )
 
 __all__ = [
+    "ANALYTICAL_ARTIFACT_SCHEMA_V1",
+    "ANALYTICAL_ARTIFACT_SCHEMA_VERSION",
+    "AnalyticalArtifact",
+    "AnalyticalArtifactRef",
+    "AnalyticalArtifactType",
     "AvailabilityAssessment",
     "AvailabilityAssessmentSet",
     "AvailabilityDisposition",
@@ -77,11 +116,15 @@ __all__ = [
     "DecisionDeviation",
     "DecisionInputProvenance",
     "DecisionRecommendation",
+    "DecisionProvenance",
     "DecisionRun",
     "DecisionRunStatus",
     "DecisionSelection",
     "DomainModel",
     "EvidenceAttribute",
+    "EVIDENCE_MANIFEST_SCHEMA_VERSION",
+    "EvidenceAcquisition",
+    "EvidenceArtifactReference",
     "EvidenceConfidence",
     "EvidenceTiming",
     "EvidenceTemporalRelation",
@@ -89,6 +132,8 @@ __all__ = [
     "Fixture",
     "Formation",
     "Gameweek",
+    "GAMEWEEK_EVIDENCE_ARTEFACT_KIND",
+    "GameweekEvidenceManifest",
     "GameweekNumber",
     "League",
     "LeagueEntry",
@@ -101,15 +146,33 @@ __all__ = [
     "PlannedGameweek",
     "Position",
     "Projection",
+    "ProjectionEvidence",
+    "ProjectionUpstreamLineage",
+    "AuthorityEvent",
+    "CloseOutcome",
+    "LegacyRunRecord",
+    "RecordedDecision",
+    "RecordedDecisionV1",
+    "RunArtefact",
+    "RunRecord",
+    "RunState",
     "SingleGameweekOptimisationRequest",
     "SingleGameweekOptimisationResult",
     "SingleGameweekTransferOptimisationRequest",
     "SingleGameweekTransferOptimisationResult",
+    "ScenarioConstraints",
+    "ScenarioDefinition",
     "Squad",
     "SquadMember",
+    "StageAttempt",
+    "StageState",
+    "SnapshotEvidence",
     "SubmittedDecision",
     "Team",
     "Transfer",
     "TransferPair",
+    "calculate_analysis_artifact_id",
+    "calculate_analytical_content_hash",
+    "calculate_evidence_identity",
     "calculate_selling_price",
 ]

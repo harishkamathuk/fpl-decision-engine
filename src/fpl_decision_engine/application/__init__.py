@@ -1,5 +1,6 @@
 """Application use cases and orchestration."""
 
+from .analytical_artifacts import AnalyticalArtifactService
 from .availability import apply_availability_exclusions, assess_availability
 from .decision_bundles import (
     DecisionBundleArtifact,
@@ -7,19 +8,104 @@ from .decision_bundles import (
     serialize_decision_bundle,
     write_decision_bundle,
 )
+from .doctor import (
+    DiagnosticCheck,
+    DiagnosticStatus,
+    DoctorReport,
+    DoctorService,
+)
+from .evaluation_artifacts import (
+    DecisionEvaluationArtifact,
+    serialize_decision_evaluation,
+    write_decision_evaluation,
+)
+from .gameweek_evidence import (
+    EvidenceComponentBytes,
+    EvidenceDriftError,
+    GameweekEvidenceArtifact,
+    InvalidEvidenceManifest,
+    ProjectionEvidenceInput,
+    SnapshotEvidenceInput,
+    build_gameweek_evidence_manifest,
+    load_gameweek_evidence_artifact,
+    parse_gameweek_evidence_manifest,
+    serialize_gameweek_evidence_manifest,
+    snapshot_content_sha256,
+    validate_gameweek_evidence,
+    validate_gameweek_evidence_references,
+    write_gameweek_evidence_manifest,
+)
+from .orchestration import (
+    BASELINE_STAGE,
+    DOCTOR_STAGE,
+    EVIDENCE_STAGE,
+    ORCHESTRATOR_STAGES,
+    BaselineOutcome,
+    GameweekOrchestrator,
+    OrchestratorError,
+    OrchestratorInputError,
+    OrchestratorRequest,
+    OrchestratorResult,
+    OrchestratorResumeError,
+)
 from .planning import compare_planning_horizons, persist_planning_decision_run
+from .scenarios import (
+    ScenarioConstraintInput,
+    ScenarioDefinitionInput,
+    ScenarioErrorCode,
+    ScenarioValidationError,
+    parse_scenario_definition,
+)
 from .squad_runs import persist_squad_decision_run
 from .transfer_runs import persist_transfer_decision_run
 
 __all__ = [
+    "AnalyticalArtifactService",
     "DecisionBundleArtifact",
+    "DecisionEvaluationArtifact",
+    "DiagnosticCheck",
+    "DiagnosticStatus",
+    "DoctorReport",
+    "DoctorService",
+    "EvidenceComponentBytes",
+    "EvidenceDriftError",
+    "GameweekEvidenceArtifact",
+    "GameweekOrchestrator",
+    "InvalidEvidenceManifest",
+    "ProjectionEvidenceInput",
+    "SnapshotEvidenceInput",
     "apply_availability_exclusions",
     "assess_availability",
     "build_decision_bundle",
+    "build_gameweek_evidence_manifest",
+    "load_gameweek_evidence_artifact",
     "compare_planning_horizons",
     "persist_planning_decision_run",
     "persist_squad_decision_run",
+    "parse_gameweek_evidence_manifest",
     "persist_transfer_decision_run",
     "serialize_decision_bundle",
+    "serialize_decision_evaluation",
+    "serialize_gameweek_evidence_manifest",
+    "snapshot_content_sha256",
+    "validate_gameweek_evidence",
+    "validate_gameweek_evidence_references",
     "write_decision_bundle",
+    "write_decision_evaluation",
+    "write_gameweek_evidence_manifest",
+    "BASELINE_STAGE",
+    "DOCTOR_STAGE",
+    "EVIDENCE_STAGE",
+    "ORCHESTRATOR_STAGES",
+    "BaselineOutcome",
+    "OrchestratorError",
+    "OrchestratorInputError",
+    "OrchestratorRequest",
+    "OrchestratorResult",
+    "OrchestratorResumeError",
+    "ScenarioConstraintInput",
+    "ScenarioDefinitionInput",
+    "ScenarioErrorCode",
+    "ScenarioValidationError",
+    "parse_scenario_definition",
 ]
