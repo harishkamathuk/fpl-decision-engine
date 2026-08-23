@@ -15,17 +15,24 @@ from fpl_decision_engine.domain.analytical_artifact import (
 from fpl_decision_engine.domain.run_record import RunRecord, RunState
 from fpl_decision_engine.ports.analytical_artifacts import (
     AnalyticalArtifactError,
+    AnalyticalArtifactGenerator,
     AnalyticalArtifactRepository,
     AnalyticalContent,
-    ComparisonArtifactGenerator,
-    HistoryArtifactGenerator,
+    ComparisonGeneratorInput,
+    HistoryGeneratorInput,
     PersistedAnalyticalArtifact,
-    ReviewArtifactGenerator,
+    ReviewGeneratorInput,
 )
+
+GeneratorInput = HistoryGeneratorInput | ComparisonGeneratorInput | ReviewGeneratorInput
 
 
 class AnalyticalArtifactService:
-    """Build and publish derived outputs without owning or mutating run lifecycle."""
+    """Validate explicit generator inputs and publish their derived outputs.
+
+    The calling layer supplies already-loaded, resolved values. Generators never receive
+    a RunRecord or repository and this service never mutates run lifecycle.
+    """
 
     def __init__(self, repository: AnalyticalArtifactRepository) -> None:
         self._repository = repository
@@ -34,66 +41,66 @@ class AnalyticalArtifactService:
         self,
         *,
         source_run: RunRecord,
-        generator: HistoryArtifactGenerator,
+        generator_input: HistoryGeneratorInput,
+        generator: AnalyticalArtifactGenerator[HistoryGeneratorInput],
         created_at: datetime,
-        source_decision_run_id: UUID | None = None,
     ) -> PersistedAnalyticalArtifact:
         """Generate and publish history content for a completed run."""
 
-        evidence_identity = self._validate_source_run(source_run)
+        self._validate_generator_input(source_run, generator_input)
         return self._publish(
             source_run=source_run,
-            evidence_identity=evidence_identity,
-            source_decision_run_id=source_decision_run_id,
+            evidence_identity=generator_input.evidence_identity,
+            source_decision_run_id=generator_input.source_decision_run_id,
             artifact_type=AnalyticalArtifactType.HISTORY,
-            generator_name=generator.generator_name,
-            generator_version=generator.generator_version,
+            generator_name=generator_input.generator_name,
+            generator_version=generator_input.generator_version,
             created_at=created_at,
-            artifact_content=generator.generate_history(source_run=source_run),
+            artifact_content=generator.generate(generator_input=generator_input),
         )
 
     def generate_comparison(
         self,
         *,
         source_run: RunRecord,
-        source_decision_run_id: UUID,
-        generator: ComparisonArtifactGenerator,
+        generator_input: ComparisonGeneratorInput,
+        generator: AnalyticalArtifactGenerator[ComparisonGeneratorInput],
         created_at: datetime,
     ) -> PersistedAnalyticalArtifact:
         """Generate and publish comparison content for a completed run."""
 
-        evidence_identity = self._validate_source_run(source_run)
+        self._validate_generator_input(source_run, generator_input)
         return self._publish(
             source_run=source_run,
-            evidence_identity=evidence_identity,
-            source_decision_run_id=source_decision_run_id,
+            evidence_identity=generator_input.evidence_identity,
+            source_decision_run_id=generator_input.source_decision_run_id,
             artifact_type=AnalyticalArtifactType.COMPARISON,
-            generator_name=generator.generator_name,
-            generator_version=generator.generator_version,
+            generator_name=generator_input.generator_name,
+            generator_version=generator_input.generator_version,
             created_at=created_at,
-            artifact_content=generator.generate_comparison(source_run=source_run),
+            artifact_content=generator.generate(generator_input=generator_input),
         )
 
     def generate_review(
         self,
         *,
         source_run: RunRecord,
-        source_decision_run_id: UUID,
-        generator: ReviewArtifactGenerator,
+        generator_input: ReviewGeneratorInput,
+        generator: AnalyticalArtifactGenerator[ReviewGeneratorInput],
         created_at: datetime,
     ) -> PersistedAnalyticalArtifact:
         """Generate and publish review content for a completed run."""
 
-        evidence_identity = self._validate_source_run(source_run)
+        self._validate_generator_input(source_run, generator_input)
         return self._publish(
             source_run=source_run,
-            evidence_identity=evidence_identity,
-            source_decision_run_id=source_decision_run_id,
+            evidence_identity=generator_input.evidence_identity,
+            source_decision_run_id=generator_input.source_decision_run_id,
             artifact_type=AnalyticalArtifactType.REVIEW,
-            generator_name=generator.generator_name,
-            generator_version=generator.generator_version,
+            generator_name=generator_input.generator_name,
+            generator_version=generator_input.generator_version,
             created_at=created_at,
-            artifact_content=generator.generate_review(source_run=source_run),
+            artifact_content=generator.generate(generator_input=generator_input),
         )
 
     @staticmethod
@@ -115,6 +122,23 @@ class AnalyticalArtifactService:
                 f"{source_run.run_id} has no decision artefact"
             )
         return evidence_identity
+
+    def _validate_generator_input(
+        self,
+        source_run: RunRecord,
+        generator_input: GeneratorInput,
+    ) -> None:
+        evidence_identity = self._validate_source_run(source_run)
+        if generator_input.source_run_id != source_run.run_id:
+            raise AnalyticalArtifactError(
+                "generator input source_run_id does not match the validated RunRecord: "
+                f"{generator_input.source_run_id} != {source_run.run_id}"
+            )
+        if generator_input.evidence_identity != evidence_identity:
+            raise AnalyticalArtifactError(
+                "generator input evidence_identity does not match the validated RunRecord: "
+                f"{generator_input.evidence_identity} != {evidence_identity}"
+            )
 
     def _publish(
         self,

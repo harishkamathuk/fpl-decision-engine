@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import inspect
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
+from pydantic import ValidationError
 
 from fpl_decision_engine.application import AnalyticalArtifactService
 from fpl_decision_engine.domain import (
@@ -18,10 +20,16 @@ from fpl_decision_engine.domain import (
     RunState,
     StageAttempt,
     StageState,
+    calculate_analysis_artifact_id,
 )
 from fpl_decision_engine.ports import (
     AnalyticalArtifactError,
+    AnalyticalArtifactGenerator,
+    ComparisonGeneratorInput,
+    GeneratorInputData,
+    HistoryGeneratorInput,
     PersistedAnalyticalArtifact,
+    ReviewGeneratorInput,
 )
 
 NOW = datetime(2026, 8, 23, 10, 0, tzinfo=UTC)
@@ -47,20 +55,73 @@ class MemoryRepository:
 
 
 class Generator:
-    generator_name = "synthetic-analysis"
-    generator_version = "1.0.0"
+    def __init__(self) -> None:
+        self.received: list[
+            HistoryGeneratorInput | ComparisonGeneratorInput | ReviewGeneratorInput
+        ] = []
 
-    def __init__(self, content: dict[str, object] | None = None) -> None:
-        self.content = content or {"points": [1, 2, 3], "summary": "stable"}
+    def generate(
+        self,
+        *,
+        generator_input: (
+            HistoryGeneratorInput | ComparisonGeneratorInput | ReviewGeneratorInput
+        ),
+    ) -> dict[str, object]:
+        self.received.append(generator_input)
+        if isinstance(generator_input, HistoryGeneratorInput):
+            return generator_input.history_inputs.as_content()
+        if isinstance(generator_input, ComparisonGeneratorInput):
+            return generator_input.comparison_inputs.as_content()
+        return generator_input.review_inputs.as_content()
 
-    def generate_history(self, *, source_run: RunRecord) -> dict[str, object]:
-        return self.content
 
-    def generate_comparison(self, *, source_run: RunRecord) -> dict[str, object]:
-        return self.content
+def history_input(
+    *,
+    source_run_id: UUID = RUN_ID,
+    source_decision_run_id: UUID | None = DECISION_RUN_ID,
+    evidence_identity: str = EVIDENCE_IDENTITY,
+    generator_name: str = "synthetic-analysis",
+    generator_version: str = "1.0.0",
+    history_inputs: dict[str, object] | None = None,
+) -> HistoryGeneratorInput:
+    return HistoryGeneratorInput(
+        source_run_id=source_run_id,
+        source_decision_run_id=source_decision_run_id,
+        evidence_identity=evidence_identity,
+        generator_name=generator_name,
+        generator_version=generator_version,
+        history_inputs=GeneratorInputData.from_content(
+            history_inputs
+            if history_inputs is not None
+            else {"points": [1, 2, 3], "summary": "stable"}
+        ),
+    )
 
-    def generate_review(self, *, source_run: RunRecord) -> dict[str, object]:
-        return self.content
+
+def comparison_input() -> ComparisonGeneratorInput:
+    return ComparisonGeneratorInput(
+        source_run_id=RUN_ID,
+        source_decision_run_id=DECISION_RUN_ID,
+        evidence_identity=EVIDENCE_IDENTITY,
+        generator_name="synthetic-analysis",
+        generator_version="1.0.0",
+        comparison_inputs=GeneratorInputData.from_content(
+            {"baseline": 72, "candidate": 75}
+        ),
+    )
+
+
+def review_input() -> ReviewGeneratorInput:
+    return ReviewGeneratorInput(
+        source_run_id=RUN_ID,
+        source_decision_run_id=DECISION_RUN_ID,
+        evidence_identity=EVIDENCE_IDENTITY,
+        generator_name="synthetic-analysis",
+        generator_version="1.0.0",
+        review_inputs=GeneratorInputData.from_content(
+            {"decision": "captain-a", "outcome_points": 12}
+        ),
+    )
 
 
 def completed_run(
@@ -116,14 +177,16 @@ def test_identical_semantics_have_deterministic_identity() -> None:
 
     first = service.generate_history(
         source_run=source_run,
-        source_decision_run_id=DECISION_RUN_ID,
+        generator_input=history_input(),
         generator=Generator(),
         created_at=NOW,
     )
     second = service.generate_history(
         source_run=source_run,
-        source_decision_run_id=DECISION_RUN_ID,
-        generator=Generator({"summary": "stable", "points": [1, 2, 3]}),
+        generator_input=history_input(
+            history_inputs={"summary": "stable", "points": [1, 2, 3]}
+        ),
+        generator=Generator(),
         created_at=NOW + timedelta(hours=1),
     )
 
@@ -131,28 +194,106 @@ def test_identical_semantics_have_deterministic_identity() -> None:
     assert len(repository.artifacts) == 1
 
 
+def test_generator_receives_complete_explicit_immutable_input() -> None:
+    repository = MemoryRepository()
+    generator = Generator()
+    generator_input = history_input(
+        history_inputs={
+            "resolved_runs": ["run-a", "run-b"],
+            "decision_points": [72, 75],
+        }
+    )
+
+    result = AnalyticalArtifactService(repository).generate_history(
+        source_run=completed_run(),
+        generator_input=generator_input,
+        generator=generator,
+        created_at=NOW,
+    )
+
+    assert generator.received == [generator_input]
+    assert generator_input.source_run_id == RUN_ID
+    assert generator_input.source_decision_run_id == DECISION_RUN_ID
+    assert generator_input.evidence_identity == EVIDENCE_IDENTITY
+    assert generator_input.generator_name == "synthetic-analysis"
+    assert generator_input.generator_version == "1.0.0"
+    assert generator_input.history_inputs.as_content() == {
+        "resolved_runs": ["run-a", "run-b"],
+        "decision_points": [72, 75],
+    }
+    with pytest.raises(ValidationError, match="frozen"):
+        generator_input.generator_version = "2.0.0"
+    with pytest.raises(ValidationError, match="frozen"):
+        generator_input.history_inputs.canonical_json = "{}"
+    mutable_copy = generator_input.history_inputs.as_content()
+    mutable_copy["new-value"] = True
+    assert "new-value" not in generator_input.history_inputs.as_content()
+
+
+    artifact = repository.load(result.analysis_artifact_id)
+    assert artifact is not None
+    assert result.analysis_artifact_id == calculate_analysis_artifact_id(
+        schema_version=artifact.schema_version,
+        artifact_type=AnalyticalArtifactType.HISTORY,
+        source_run_id=generator_input.source_run_id,
+        source_decision_run_id=generator_input.source_decision_run_id,
+        evidence_identity=generator_input.evidence_identity,
+        generator_name=generator_input.generator_name,
+        generator_version=generator_input.generator_version,
+        artifact_content=generator_input.history_inputs.as_content(),
+    )
+
+
+def test_generator_contract_has_no_repository_or_run_record_dependency() -> None:
+    signature = inspect.signature(AnalyticalArtifactGenerator.generate)
+
+    assert tuple(signature.parameters) == ("self", "generator_input")
+    expected_common = {
+        "source_run_id",
+        "source_decision_run_id",
+        "evidence_identity",
+        "generator_name",
+        "generator_version",
+    }
+    assert set(HistoryGeneratorInput.model_fields) == expected_common | {"history_inputs"}
+    assert set(ComparisonGeneratorInput.model_fields) == expected_common | {
+        "comparison_inputs"
+    }
+    assert set(ReviewGeneratorInput.model_fields) == expected_common | {"review_inputs"}
+    for contract in (
+        HistoryGeneratorInput,
+        ComparisonGeneratorInput,
+        ReviewGeneratorInput,
+    ):
+        assert "repository" not in contract.model_fields
+        assert "run_record" not in contract.model_fields
+
+
 @pytest.mark.parametrize("changed", ["generator", "version", "content"])
 def test_regeneration_changes_identity_for_semantic_change(changed: str) -> None:
     repository = MemoryRepository()
     service = AnalyticalArtifactService(repository)
     source_run = completed_run()
-    original_generator = Generator()
-    changed_generator = Generator({"points": [4], "summary": "changed"})
+    original_input = history_input()
     if changed == "generator":
-        changed_generator.generator_name = "different-analysis"
-        changed_generator.content = original_generator.content
+        changed_input = history_input(generator_name="different-analysis")
     elif changed == "version":
-        changed_generator.generator_version = "2.0.0"
-        changed_generator.content = original_generator.content
+        changed_input = history_input(generator_version="2.0.0")
+    else:
+        changed_input = history_input(
+            history_inputs={"points": [4], "summary": "changed"}
+        )
 
     original = service.generate_history(
         source_run=source_run,
-        generator=original_generator,
+        generator_input=original_input,
+        generator=Generator(),
         created_at=NOW,
     )
     regenerated = service.generate_history(
         source_run=source_run,
-        generator=changed_generator,
+        generator_input=changed_input,
+        generator=Generator(),
         created_at=NOW,
     )
 
@@ -169,24 +310,29 @@ def test_history_comparison_and_review_preserve_provenance() -> None:
     generated = (
         service.generate_history(
             source_run=source_run,
-            source_decision_run_id=DECISION_RUN_ID,
+            generator_input=history_input(),
             generator=generator,
             created_at=NOW,
         ),
         service.generate_comparison(
             source_run=source_run,
-            source_decision_run_id=DECISION_RUN_ID,
+            generator_input=comparison_input(),
             generator=generator,
             created_at=NOW,
         ),
         service.generate_review(
             source_run=source_run,
-            source_decision_run_id=DECISION_RUN_ID,
+            generator_input=review_input(),
             generator=generator,
             created_at=NOW,
         ),
     )
 
+    assert generator.received == [
+        history_input(),
+        comparison_input(),
+        review_input(),
+    ]
     artifacts = tuple(repository.load(item.analysis_artifact_id) for item in generated)
     assert all(artifact is not None for artifact in artifacts)
     assert tuple(artifact.artifact_type for artifact in artifacts if artifact is not None) == (
@@ -216,14 +362,53 @@ def test_generation_requires_completed_evidence_bound_decision_run(
     service = AnalyticalArtifactService(MemoryRepository())
 
     with pytest.raises(AnalyticalArtifactError, match=message):
-        service.generate_history(source_run=source_run, generator=Generator(), created_at=NOW)
+        service.generate_history(
+            source_run=source_run,
+            generator_input=history_input(),
+            generator=Generator(),
+            created_at=NOW,
+        )
+
+
+@pytest.mark.parametrize(
+    ("generator_input", "message"),
+    [
+        (
+            history_input(source_run_id=UUID(int=104_001)),
+            "source_run_id does not match",
+        ),
+        (
+            history_input(evidence_identity=f"sha256:{'f' * 64}"),
+            "evidence_identity does not match",
+        ),
+    ],
+)
+def test_generator_input_provenance_must_match_loaded_run(
+    generator_input: HistoryGeneratorInput,
+    message: str,
+) -> None:
+    generator = Generator()
+
+    with pytest.raises(AnalyticalArtifactError, match=message):
+        AnalyticalArtifactService(MemoryRepository()).generate_history(
+            source_run=completed_run(),
+            generator_input=generator_input,
+            generator=generator,
+            created_at=NOW,
+        )
+
+    assert generator.received == []
 
 
 def test_invalid_source_is_rejected_before_generator_runs() -> None:
     class MustNotRun(Generator):
         called = False
 
-        def generate_history(self, *, source_run: RunRecord) -> dict[str, object]:
+        def generate(
+            self,
+            *,
+            generator_input: HistoryGeneratorInput,
+        ) -> dict[str, object]:
             self.called = True
             raise AssertionError("generator must not run")
 
@@ -232,6 +417,7 @@ def test_invalid_source_is_rejected_before_generator_runs() -> None:
     with pytest.raises(AnalyticalArtifactError, match="require a completed run"):
         AnalyticalArtifactService(MemoryRepository()).generate_history(
             source_run=completed_run(state=RunState.PROVISIONAL),
+            generator_input=history_input(),
             generator=generator,
             created_at=NOW,
         )
@@ -241,7 +427,11 @@ def test_invalid_source_is_rejected_before_generator_runs() -> None:
 
 def test_generation_never_mutates_run_record_even_when_generator_fails() -> None:
     class FailingGenerator(Generator):
-        def generate_history(self, *, source_run: RunRecord) -> dict[str, object]:
+        def generate(
+            self,
+            *,
+            generator_input: HistoryGeneratorInput,
+        ) -> dict[str, object]:
             raise RuntimeError("analysis unavailable")
 
     source_run = completed_run()
@@ -250,6 +440,7 @@ def test_generation_never_mutates_run_record_even_when_generator_fails() -> None
     with pytest.raises(RuntimeError, match="analysis unavailable"):
         AnalyticalArtifactService(MemoryRepository()).generate_history(
             source_run=source_run,
+            generator_input=history_input(),
             generator=FailingGenerator(),
             created_at=NOW,
         )
