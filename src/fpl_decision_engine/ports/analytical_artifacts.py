@@ -5,12 +5,15 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from typing import Protocol, Self, TypeVar, cast, runtime_checkable
-from uuid import UUID
 
 from pydantic import Field, JsonValue, field_validator
 
-from fpl_decision_engine.domain.analytical_artifact import AnalyticalArtifact
+from fpl_decision_engine.domain.analytical_artifact import (
+    AnalyticalArtifact,
+    AnalyticalArtifactRef,
+)
 from fpl_decision_engine.domain.base import DomainModel
+from fpl_decision_engine.domain.provenance import DecisionProvenance
 
 AnalyticalContent = dict[str, JsonValue]
 
@@ -93,8 +96,7 @@ class AnalyticalArtifactRepository(Protocol):
 class _AnalyticalGeneratorInput(DomainModel):
     """Immutable provenance and generator metadata shared by analytical inputs."""
 
-    source_run_id: UUID
-    evidence_identity: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    source_decision: DecisionProvenance
     generator_name: str = Field(min_length=1)
     generator_version: str = Field(min_length=1)
 
@@ -106,22 +108,57 @@ class HistoryGeneratorInput(_AnalyticalGeneratorInput):
     no repository and must not discover runs or records themselves.
     """
 
-    source_decision_run_id: UUID | None = None
     history_inputs: GeneratorInputData
 
 
 class ComparisonGeneratorInput(_AnalyticalGeneratorInput):
     """Complete preloaded values for an already-resolved comparison."""
 
-    source_decision_run_id: UUID
+    compared_decisions: tuple[DecisionProvenance, ...] = Field(min_length=1)
     comparison_inputs: GeneratorInputData
+
+    @field_validator("compared_decisions")
+    @classmethod
+    def compared_provenance_is_canonical_and_unambiguous(
+        cls, value: tuple[DecisionProvenance, ...]
+    ) -> tuple[DecisionProvenance, ...]:
+        ordered = tuple(
+            sorted(
+                value,
+                key=lambda item: (
+                    str(item.run_id),
+                    str(item.decision_run_id),
+                    item.evidence_identity,
+                    item.decision_artifact_hash,
+                ),
+            )
+        )
+        if value != ordered:
+            raise ValueError("compared_decisions must use canonical ordering")
+        decision_ids = tuple(item.decision_run_id for item in value)
+        if len(set(decision_ids)) != len(decision_ids):
+            raise ValueError("compared_decisions contains conflicting duplicate provenance")
+        return value
 
 
 class ReviewGeneratorInput(_AnalyticalGeneratorInput):
     """Complete preloaded decision/outcome values used to generate a review."""
 
-    source_decision_run_id: UUID
+    referenced_artifacts: tuple[AnalyticalArtifactRef, ...] = Field(min_length=1)
     review_inputs: GeneratorInputData
+
+    @field_validator("referenced_artifacts")
+    @classmethod
+    def referenced_artifacts_are_canonical_and_unique(
+        cls, value: tuple[AnalyticalArtifactRef, ...]
+    ) -> tuple[AnalyticalArtifactRef, ...]:
+        ordered = tuple(sorted(value, key=lambda item: item.artifact_id))
+        if value != ordered:
+            raise ValueError("referenced_artifacts must use canonical ordering")
+        identifiers = tuple(item.artifact_id for item in value)
+        if len(set(identifiers)) != len(identifiers):
+            raise ValueError("referenced_artifacts must be unique")
+        return value
 
 
 GeneratorInputT_contra = TypeVar(

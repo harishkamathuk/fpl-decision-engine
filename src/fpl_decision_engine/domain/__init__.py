@@ -1,8 +1,10 @@
 """Canonical domain model for the decision engine."""
 
 from .analytical_artifact import (
+    ANALYTICAL_ARTIFACT_SCHEMA_V1,
     ANALYTICAL_ARTIFACT_SCHEMA_VERSION,
     AnalyticalArtifact,
+    AnalyticalArtifactRef,
     AnalyticalArtifactType,
     calculate_analysis_artifact_id,
     calculate_analytical_content_hash,
@@ -64,12 +66,14 @@ from .planning import (
     MultiGameweekPlanningResult,
     PlannedGameweek,
 )
+from .provenance import DecisionProvenance
 from .run_record import (
     GAMEWEEK_EVIDENCE_ARTEFACT_KIND,
     AuthorityEvent,
     CloseOutcome,
     LegacyRunRecord,
     RecordedDecision,
+    RecordedDecisionV1,
     RunArtefact,
     RunRecord,
     RunState,
@@ -94,8 +98,10 @@ from .value_objects import (
 )
 
 __all__ = [
+    "ANALYTICAL_ARTIFACT_SCHEMA_V1",
     "ANALYTICAL_ARTIFACT_SCHEMA_VERSION",
     "AnalyticalArtifact",
+    "AnalyticalArtifactRef",
     "AnalyticalArtifactType",
     "AvailabilityAssessment",
     "AvailabilityAssessmentSet",
@@ -110,6 +116,7 @@ __all__ = [
     "DecisionDeviation",
     "DecisionInputProvenance",
     "DecisionRecommendation",
+    "DecisionProvenance",
     "DecisionRun",
     "DecisionRunStatus",
     "DecisionSelection",
@@ -145,6 +152,7 @@ __all__ = [
     "CloseOutcome",
     "LegacyRunRecord",
     "RecordedDecision",
+    "RecordedDecisionV1",
     "RunArtefact",
     "RunRecord",
     "RunState",
