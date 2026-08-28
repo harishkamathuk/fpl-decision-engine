@@ -81,6 +81,18 @@ from .run_record import (
     StageState,
 )
 from .scenario import ScenarioConstraints, ScenarioDefinition
+from .scenario_lifecycle import (
+    FrozenScenarioArtefact,
+    PreparedScenarioCandidate,
+    ScenarioClassification,
+    ScenarioClassificationResult,
+    ScenarioDisposition,
+    ValidScenarioDisposition,
+    calculate_candidate_hash,
+    calculate_frozen_hash,
+    classify_scenarios,
+    prepare_candidate,
+)
 from .transfers import (
     SingleGameweekTransferOptimisationRequest,
     SingleGameweekTransferOptimisationResult,
@@ -162,6 +174,16 @@ __all__ = [
     "SingleGameweekTransferOptimisationResult",
     "ScenarioConstraints",
     "ScenarioDefinition",
+    "FrozenScenarioArtefact",
+    "PreparedScenarioCandidate",
+    "ScenarioClassification",
+    "ScenarioClassificationResult",
+    "ScenarioDisposition",
+    "ValidScenarioDisposition",
+    "calculate_candidate_hash",
+    "calculate_frozen_hash",
+    "classify_scenarios",
+    "prepare_candidate",
     "Squad",
     "SquadMember",
     "StageAttempt",

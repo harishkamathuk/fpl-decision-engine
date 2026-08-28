@@ -61,6 +61,14 @@ from .orchestration import (
     OrchestratorResumeError,
 )
 from .planning import compare_planning_horizons, persist_planning_decision_run
+from .scenario_lifecycle import (
+    ScenarioLifecycleError,
+    prepare_scenario_candidate,
+    promote_scenario_candidate,
+    review_scenario_candidate,
+    serialize_frozen_scenario,
+    write_frozen_scenario,
+)
 from .scenarios import (
     ScenarioConstraintInput,
     ScenarioDefinitionInput,
@@ -130,4 +138,10 @@ __all__ = [
     "ScenarioErrorCode",
     "ScenarioValidationError",
     "parse_scenario_definition",
+    "ScenarioLifecycleError",
+    "prepare_scenario_candidate",
+    "promote_scenario_candidate",
+    "review_scenario_candidate",
+    "serialize_frozen_scenario",
+    "write_frozen_scenario",
 ]
