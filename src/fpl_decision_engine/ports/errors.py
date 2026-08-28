@@ -69,6 +69,14 @@ class ProviderDataError(ProviderError):
         )
 
 
+class ProviderManagerIdentityError(ProviderDataError):
+    """Authenticated provider data identifies a different manager."""
+
+
+class ProviderManagerNotFoundError(ProviderDataError):
+    """The provider explicitly reports that the requested manager does not exist."""
+
+
 class ProviderMappingError(ProviderError):
     def __init__(self, message: str, *, provider_id: str) -> None:
         super().__init__(
