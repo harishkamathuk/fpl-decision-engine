@@ -40,6 +40,15 @@ from .gameweek_evidence import (
     SnapshotEvidence,
     calculate_evidence_identity,
 )
+from .manager_state import (
+    ManagerComparison,
+    ManagerStateFailure,
+    ManagerStateResult,
+    ManagerStateSnapshot,
+    ManagerVerification,
+    RawManagerPick,
+    compare_manager_state,
+)
 from .models import (
     DecisionRun,
     DecisionRunStatus,
@@ -150,6 +159,13 @@ __all__ = [
     "League",
     "LeagueEntry",
     "ManagerState",
+    "ManagerComparison",
+    "ManagerStateFailure",
+    "ManagerStateResult",
+    "ManagerStateSnapshot",
+    "ManagerVerification",
+    "RawManagerPick",
+    "compare_manager_state",
     "Money",
     "MultiGameweekPlanningRequest",
     "MultiGameweekPlanningResult",
