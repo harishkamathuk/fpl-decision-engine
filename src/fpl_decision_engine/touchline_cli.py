@@ -15,6 +15,11 @@ from uuid import UUID, uuid4
 
 import typer
 
+from fpl_decision_engine.application.analytical_artifacts import AnalyticalArtifactService
+from fpl_decision_engine.application.analytical_history import (
+    AnalyticalHistoryService,
+)
+from fpl_decision_engine.application.decision_bundles import load_decision_bundle
 from fpl_decision_engine.application.doctor import DiagnosticStatus, DoctorService
 from fpl_decision_engine.application.gameweek_evidence import (
     InvalidEvidenceManifest,
@@ -33,7 +38,11 @@ from fpl_decision_engine.domain.run_record import (
     StageState,
 )
 from fpl_decision_engine.infrastructure.orchestration import LocalBlankSquadBaselineRunner
+from fpl_decision_engine.infrastructure.persistence.analytical_artifacts import (
+    FileAnalyticalArtifactRepository,
+)
 from fpl_decision_engine.infrastructure.persistence.run_records import RunRecordLedger
+from fpl_decision_engine.ports.analytical_artifacts import AnalyticalArtifactError
 from fpl_decision_engine.ports.persistence import UnsupportedSchemaVersion
 from fpl_decision_engine.ports.run_records import RunRecordError
 
@@ -150,6 +159,43 @@ def run_gameweek_command(
     if result.recommendation is not None:
         typer.echo(f"baseline_objective: {result.recommendation.primary_objective:.6f}")
     raise typer.Exit(code=result.exit_code)
+
+
+@app.command("analytics")
+def analytics_command(
+    run_id: Annotated[UUID, typer.Argument(help="Completed run record id.")],
+    state_root: Annotated[
+        Path,
+        typer.Option(help="Operational state root containing run-records and artifacts."),
+    ] = Path("state"),
+) -> None:
+    """Generate downstream history/comparison analytical artefacts for a completed run.
+
+    Read-only for the run record: previous state is resolved exclusively from
+    ``previous_run_id`` and analytical failure surfaces as explicit analytical
+    WARN/error output, never reopening, downgrading or mutating the completed run.
+    """
+    try:
+        service = AnalyticalHistoryService(
+            records=RunRecordService(RunRecordLedger(state_root / "run-records")),
+            bundle_loader=load_decision_bundle,
+            analytical=AnalyticalArtifactService(
+                FileAnalyticalArtifactRepository(state_root)
+            ),
+        )
+        result = service.generate(run_id=run_id)
+    except (AnalyticalArtifactError, RunRecordError, OSError) as exc:
+        typer.echo(f"analytical error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(f"run_id: {run_id}")
+    typer.echo(f"history: {result.history.analysis_artifact_id}")
+    if result.comparison is None:
+        typer.echo("comparison: none (no previous run)")
+        return
+    typer.echo(f"comparison: {result.comparison.analysis_artifact_id}")
+    typer.echo(
+        f"classification: {result.change.value if result.change is not None else 'n/a'}"
+    )
 
 
 def _run_record_options(

@@ -1,10 +1,22 @@
 """Application use cases and orchestration."""
 
 from .analytical_artifacts import AnalyticalArtifactService
+from .analytical_history import (
+    AnalyticalHistoryError,
+    AnalyticalHistoryResult,
+    AnalyticalHistoryService,
+    ComparisonGenerator,
+    HistoryGenerator,
+    RecommendationChange,
+    classify_recommendation_change,
+)
 from .availability import apply_availability_exclusions, assess_availability
 from .decision_bundles import (
     DecisionBundleArtifact,
+    DecisionBundleError,
     build_decision_bundle,
+    load_decision_bundle,
+    parse_decision_bundle,
     serialize_decision_bundle,
     write_decision_bundle,
 )
@@ -61,8 +73,18 @@ from .transfer_runs import persist_transfer_decision_run
 
 __all__ = [
     "AnalyticalArtifactService",
+    "AnalyticalHistoryError",
+    "AnalyticalHistoryResult",
+    "AnalyticalHistoryService",
+    "ComparisonGenerator",
     "DecisionBundleArtifact",
+    "DecisionBundleError",
     "DecisionEvaluationArtifact",
+    "HistoryGenerator",
+    "RecommendationChange",
+    "classify_recommendation_change",
+    "load_decision_bundle",
+    "parse_decision_bundle",
     "DiagnosticCheck",
     "DiagnosticStatus",
     "DoctorReport",
