@@ -160,3 +160,13 @@ def test_run_gameweek_cli_exposes_explicit_resume_contract() -> None:
     extra = actual_params - expected_params - {"season", "gameweek"}
     assert not missing, f"Missing parameters: {missing}"
     assert not extra, f"Unexpected parameters: {extra}"
+
+
+def test_analytics_cli_surfaces_analytical_failure_as_error_output(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["analytics", str(uuid4()), "--state-root", str(tmp_path)],
+    )
+
+    assert result.exit_code == 2
+    assert "analytical error:" in result.output

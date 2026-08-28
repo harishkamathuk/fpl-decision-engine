@@ -1,4 +1,4 @@
-"""Build and write explicit content-addressed GW decision bundle artifacts."""
+"""Build, write and read explicit content-addressed GW decision bundle artifacts."""
 
 from __future__ import annotations
 
@@ -9,7 +9,10 @@ import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 from uuid import UUID
+
+from pydantic import ValidationError
 
 from fpl_decision_engine.domain import (
     DecisionBundleV1,
@@ -19,6 +22,10 @@ from fpl_decision_engine.domain import (
     SingleGameweekOptimisationRequest,
     SingleGameweekOptimisationResult,
 )
+
+
+class DecisionBundleError(RuntimeError):
+    """A persisted decision bundle is unreadable, invalid or hash-mismatched."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,3 +186,66 @@ def write_decision_bundle(
         finally:
             temporary_path.unlink(missing_ok=True)
     return DecisionBundleArtifact(path=path, reference=str(path), sha256=digest)
+
+
+def parse_decision_bundle(content: bytes) -> DecisionBundleV1:
+    """Parse and validate the canonical persisted decision bundle wire contract.
+
+    The canonical serializer renders ``formation`` as its label string; the read seam
+    reconstructs the ``Formation`` fields so the persisted document round-trips through
+    the immutable v1 model without redesigning the bundle.
+    """
+
+    try:
+        decoded: object = json.loads(content)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise DecisionBundleError(f"decision bundle is not valid JSON: {exc}") from exc
+    if not isinstance(decoded, dict):
+        raise DecisionBundleError("decision bundle must contain a JSON object")
+    payload = cast(dict[str, object], decoded)
+    gameweek = payload.get("gameweek")
+    if isinstance(gameweek, int) and not isinstance(gameweek, bool):
+        payload["gameweek"] = {"value": gameweek}
+    recommendation = payload.get("recommendation")
+    if isinstance(recommendation, dict):
+        recommendation_payload = cast(dict[str, object], recommendation)
+        formation = recommendation_payload.get("formation")
+        if isinstance(formation, str):
+            parts = formation.split("-")
+            if len(parts) != 3 or any(not part.isdigit() for part in parts):
+                raise DecisionBundleError(
+                    "decision bundle recommendation formation is not a valid label: "
+                    f"{formation!r}"
+                )
+            recommendation_payload["formation"] = {
+                "defenders": int(parts[0]),
+                "midfielders": int(parts[1]),
+                "forwards": int(parts[2]),
+            }
+    try:
+        return DecisionBundleV1.model_validate(payload)
+    except ValidationError as exc:
+        raise DecisionBundleError(f"invalid decision bundle: {exc}") from exc
+
+
+def load_decision_bundle(*, reference: str, sha256: str) -> DecisionBundleV1:
+    """Load one immutable bundle through its recorded content-addressed reference.
+
+    The recorded SHA-256 is verified against the exact persisted bytes before parsing,
+    mirroring the write seam's content-addressed semantics. Nothing is ever repaired or
+    fabricated from a mismatched or unreadable reference.
+    """
+
+    try:
+        content = Path(reference).read_bytes()
+    except OSError as exc:
+        raise DecisionBundleError(
+            f"cannot read decision bundle at {reference!r}: {exc}"
+        ) from exc
+    observed = hashlib.sha256(content).hexdigest()
+    if observed != sha256:
+        raise DecisionBundleError(
+            f"decision bundle at {reference!r} content hash mismatch: expected SHA-256 "
+            f"{sha256}, observed {observed}"
+        )
+    return parse_decision_bundle(content)
