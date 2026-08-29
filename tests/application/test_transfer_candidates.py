@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
+from pydantic import ValidationError
 
 from fpl_decision_engine.application import (
     enumerate_and_rank,
@@ -381,29 +382,101 @@ def test_resulting_squad_legality() -> None:
 
 
 def test_club_limit_rejection() -> None:
-    owned = make_owned_players(price=50)
-    # Replace the 2nd GK with an extra player from the same team as the 1st GK
-    first_gk = owned[0]
-    same_team_replacement = Player(
+    owned = list(make_owned_players(price=50))
+
+    team_x = uid(500)
+    # owned[0], owned[1], owned[2] are all GOALKEEPERS. Make all 3 from team_x.
+    owned[0] = owned[0].model_copy(update={"team_id": team_x})
+    owned[1] = owned[1].model_copy(update={"team_id": team_x})
+    owned[2] = owned[2].model_copy(update={"team_id": team_x})
+
+    # Fourth player from team_x (a defender, to avoid the position-quota
+    # confusion: selling a non-team-x defender and buying a team-x defender
+    # keeps position counts valid but breaches club limit).
+    fourth_from_team_x = Player(
         id=uid(9998),
-        team_id=first_gk.team_id,
-        first_name="Same",
-        last_name="Team",
-        web_name="SameTeam",
-        position=Position.GOALKEEPER,
+        team_id=team_x,
+        first_name="Fourth",
+        last_name="Club",
+        web_name="Fourth",
+        position=Position.DEFENDER,
         price=Money(tenths_million=50),
     )
-    all_players = owned + (same_team_replacement,)
+    all_players = tuple(owned) + (fourth_from_team_x,)
     projections = make_projections(all_players)
-    state, _ = make_manager_state(bank=10)
+    state, _ = make_manager_state(owned_players=tuple(owned), bank=10, free_transfers=1)
+
+    assert sum(1 for m in state.squad.members if m.team_id == team_x) == 3
 
     candidates = enumerate_transfer_candidates(state, all_players, projections)
     transfers = [c for c in candidates if c.kind == "TRANSFER"]
 
-    for t in transfers:
-        if t.player_out_id == first_gk.id:
-            club_count = sum(1 for m in t.squad.members if m.team_id == first_gk.team_id)
-            assert club_count <= 3
+    # The transfer buying fourth_from_team_x from a non-team-x defender slot
+    # would produce 4 from team_x. Squad validation rejects it.
+    fourth_candidates = [t for t in transfers if t.player_in_id == fourth_from_team_x.id]
+    for t in fourth_candidates:
+        club_count = sum(1 for m in t.squad.members if m.team_id == team_x)
+        assert club_count <= 3, "candidate with 4 from one club should be rejected"
+
+    # Directly verify the Squad model rejects 4-from-one-club.
+    bad_members = list(state.squad.members)
+    replacement_idx = next(
+        i
+        for i, m in enumerate(bad_members)
+        if m.team_id != team_x and m.position is Position.DEFENDER
+    )
+    bad_members[replacement_idx] = SquadMember(
+        player_id=fourth_from_team_x.id,
+        team_id=team_x,
+        position=Position.DEFENDER,
+        purchase_price=Money(tenths_million=50),
+        selling_price=None,
+    )
+    with pytest.raises(ValidationError, match="more than three"):
+        Squad(members=tuple(bad_members))
+
+
+def test_same_club_out_to_same_club_in_keeps_limit() -> None:
+    owned = list(make_owned_players(price=50))
+
+    team_x = uid(500)
+    # Make exactly 3 from team_x by choosing 3 owned players whose original
+    # teams have only 2 members each, so the total per team doesn't exceed 3.
+    # owned[0] is GK/team[0], owned[1] is GK/team[1], owned[6] is DEF/team[5].
+    # Setting these to team_x gives 3 from team_x and reduces their original
+    # teams by 1 each (still ≤ 3).
+    owned[0] = owned[0].model_copy(update={"team_id": team_x})
+    owned[1] = owned[1].model_copy(update={"team_id": team_x})
+    owned[6] = owned[6].model_copy(update={"team_id": team_x})
+
+    replacement_same_club = Player(
+        id=uid(9998),
+        team_id=team_x,
+        first_name="Same",
+        last_name="Club",
+        web_name="SameClub",
+        position=owned[0].position,
+        price=Money(tenths_million=50),
+    )
+    all_players = tuple(owned) + (replacement_same_club,)
+    projections = make_projections(all_players)
+    state, _ = make_manager_state(owned_players=tuple(owned), bank=10, free_transfers=1)
+
+    assert sum(1 for m in state.squad.members if m.team_id == team_x) == 3
+
+    candidates = enumerate_transfer_candidates(state, all_players, projections)
+    transfers = [c for c in candidates if c.kind == "TRANSFER"]
+
+    # Selling owned[0] (GK, team_x) and buying replacement_same_club (GK, team_x)
+    # should yield exactly 3 from team_x (owned[1] + owned[6] + replacement).
+    same_club_transfers = [
+        t
+        for t in transfers
+        if t.player_out_id == owned[0].id and t.player_in_id == replacement_same_club.id
+    ]
+    assert len(same_club_transfers) == 1
+    count = sum(1 for m in same_club_transfers[0].squad.members if m.team_id == team_x)
+    assert count == 3
 
 
 # ---------------------------------------------------------------------------
@@ -431,6 +504,33 @@ def test_fixed_squad_containment() -> None:
     squad_ids = {m.player_id for m in roll.candidate.squad.members}
     result_squad_ids = {m.player_id for m in roll.optimisation_result.squad.members}
     assert result_squad_ids == squad_ids
+
+
+def test_transfer_candidate_fixed_squad_containment() -> None:
+    owned = make_owned_players(price=50)
+    cheap = Player(
+        id=uid(9999),
+        team_id=uid(999),
+        first_name="Cheap",
+        last_name="Incoming",
+        web_name="CheapIn",
+        position=Position.GOALKEEPER,
+        price=Money(tenths_million=40),
+    )
+    all_players = owned + (cheap,)
+    projections = make_projections(all_players)
+    state, _ = make_manager_state(owned_players=owned, bank=10, free_transfers=1)
+    optimiser = HighsSingleGameweekOptimiser()
+
+    result = enumerate_and_rank(state, all_players, projections, optimiser)
+
+    evaluated = next(e for e in result if e.candidate.kind == "TRANSFER")
+    candidate_ids = {m.player_id for m in evaluated.candidate.squad.members}
+    result_ids = {m.player_id for m in evaluated.optimisation_result.squad.members}
+
+    assert result_ids == candidate_ids
+    assert cheap.id in result_ids
+    assert evaluated.candidate.player_out_id not in result_ids
 
 
 def test_xi_from_optimiser() -> None:
@@ -547,32 +647,87 @@ def test_transfer_candidate_ranked_above_roll_when_higher_score() -> None:
 
 def test_equal_score_fewer_transfer_tie_break() -> None:
     owned = make_owned_players(price=50)
-    equal = Player(
+
+    # All owned players score exactly 5.0; incoming player also scores 5.0
+    # so the transfer candidate's XI score equals the ROLL score.
+    in_player = Player(
         id=uid(9999),
         team_id=uid(999),
         first_name="Equal",
-        last_name="Incoming",
-        web_name="Equal",
+        last_name="Points",
+        web_name="EqPts",
         position=Position.GOALKEEPER,
         price=Money(tenths_million=40),
     )
-    all_players = owned + (equal,)
-    projections = make_projections(all_players, base_points={p.id: 5.0 for p in all_players})
+    all_players = owned + (in_player,)
+    all_points = {p.id: 5.0 for p in all_players}
+    projections = make_projections(all_players, base_points=all_points)
     state, _ = make_manager_state(owned_players=owned, bank=10, free_transfers=1)
     optimiser = HighsSingleGameweekOptimiser()
 
     result = enumerate_and_rank(state, all_players, projections, optimiser)
 
-    if len(result) > 1:
-        roll = next(e for e in result if e.candidate.kind == "ROLL")
-        best_transfer = max(
-            (e for e in result if e.candidate.kind == "TRANSFER"),
-            key=lambda e: e.current_gw_score,
+    roll = next(e for e in result if e.candidate.kind == "ROLL")
+    transfers_with_same_score = [
+        e
+        for e in result
+        if e.candidate.kind == "TRANSFER"
+        and e.current_gw_score == pytest.approx(roll.current_gw_score)
+    ]
+    assert len(transfers_with_same_score) > 0
+
+    roll_pos = result.index(roll)
+    for t in transfers_with_same_score:
+        t_pos = result.index(t)
+        assert roll_pos < t_pos
+
+
+def test_equal_score_transfer_identity_tie_break() -> None:
+    owned = make_owned_players(price=50)
+
+    # Two incoming players with identical score (5.0), same position, affordable.
+    # All owned players also score 5.0, so transfer candidates with the same
+    # score will tie on criterion 1 and need criterion 3 (identity) to break.
+    in_a = Player(
+        id=uid(9998),
+        team_id=uid(998),
+        first_name="IncomingA",
+        last_name="Player",
+        web_name="InA",
+        position=owned[0].position,
+        price=Money(tenths_million=40),
+    )
+    in_b = Player(
+        id=uid(9999),
+        team_id=uid(997),
+        first_name="IncomingB",
+        last_name="Player",
+        web_name="InB",
+        position=owned[1].position,
+        price=Money(tenths_million=40),
+    )
+    all_players = owned + (in_a, in_b)
+    all_points = {p.id: 5.0 for p in all_players}
+    projections = make_projections(all_players, base_points=all_points)
+    state, _ = make_manager_state(owned_players=owned, bank=10, free_transfers=1)
+    optimiser = HighsSingleGameweekOptimiser()
+
+    result = enumerate_and_rank(state, all_players, projections, optimiser)
+
+    transfers = [e for e in result if e.candidate.kind == "TRANSFER"]
+    same_score = [
+        t for t in transfers if t.current_gw_score == pytest.approx(transfers[0].current_gw_score)
+    ]
+    assert len(same_score) >= 2
+
+    same_score.sort(key=lambda e: e.candidate.identity)
+    for i in range(len(same_score) - 1):
+        assert same_score[i].candidate.identity <= same_score[i + 1].candidate.identity
+        if same_score[i].candidate.identity == same_score[i + 1].candidate.identity:
+            continue
+        assert same_score[i].candidate.identity < same_score[i + 1].candidate.identity, (
+            "identity ordering must be lexicographic on (out_id, in_id)"
         )
-        if roll.current_gw_score == pytest.approx(best_transfer.current_gw_score):
-            roll_pos = result.index(roll)
-            transfer_pos = result.index(best_transfer)
-            assert roll_pos < transfer_pos
 
 
 def test_deterministic_transfer_identity_tie_break() -> None:

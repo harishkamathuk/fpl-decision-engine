@@ -234,16 +234,6 @@ def _build_fixed_squad_request(
         budget=budget,
     )
 
-    for player in fixed_players:
-        assert player.id in squad_ids, f"player {player.id} outside candidate squad"
-
-    return SingleGameweekOptimisationRequest(
-        target_gameweek=target_gameweek,
-        players=fixed_players,
-        projections=tuple(projection_by_id[member.player_id] for member in ordered_members),
-        budget=budget,
-    )
-
 
 def _evaluate_single(
     candidate: TransferCandidate,
