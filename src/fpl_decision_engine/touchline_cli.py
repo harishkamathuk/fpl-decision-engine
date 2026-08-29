@@ -26,6 +26,11 @@ from fpl_decision_engine.application.analytical_history import (
 )
 from fpl_decision_engine.application.decision_bundles import load_decision_bundle
 from fpl_decision_engine.application.doctor import DiagnosticStatus, DoctorService
+from fpl_decision_engine.application.execution_summary import (
+    build_execution_summary,
+    render_execution_summary_json,
+    render_execution_summary_text,
+)
 from fpl_decision_engine.application.gameweek_evidence import (
     GameweekEvidenceArtifact,
     InvalidEvidenceManifest,
@@ -499,6 +504,30 @@ def show_command(
     except RunRecordError as exc:
         _report(exc)
     _echo_summary(record)
+
+
+@run_record_app.command("summary")
+def summary_command(
+    ctx: typer.Context,
+    run_id: Annotated[UUID, typer.Argument(help="Run record id.")],
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit deterministic machine-readable JSON."),
+    ] = False,
+) -> None:
+    """Render a read-only derived execution summary for one run record."""
+    service = _service(ctx)
+    try:
+        record = service.get_run(run_id)
+    except RunRecordError as exc:
+        _report(exc)
+    summary = build_execution_summary(record)
+    typer.echo(
+        render_execution_summary_json(summary)
+        if json_output
+        else render_execution_summary_text(summary),
+        nl=False,
+    )
 
 
 @run_record_app.command("list")

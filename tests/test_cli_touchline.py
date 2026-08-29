@@ -65,6 +65,34 @@ def test_run_record_cli_create_stage_close_flow(tmp_path: Path) -> None:
     assert (Path(tmp_path) / f"{run_id}.json").is_file()
 
 
+def test_run_record_cli_summary_text_and_json(tmp_path: Path) -> None:
+    result = invoke(
+        "--state-root",
+        str(tmp_path),
+        "create",
+        "--season",
+        "2026-27",
+        "--gameweek",
+        "1",
+        "--mandatory-stage",
+        "ingest",
+    )
+    assert result.exit_code == 0, result.output
+    run_id = result.output.split("run_id: ")[1].split()[0]
+
+    text = invoke("--state-root", str(tmp_path), "summary", run_id)
+    assert text.exit_code == 0, text.output
+    assert "trigger: not-recorded" in text.output
+    assert "scenario_status" not in text.output
+
+    machine = invoke("--state-root", str(tmp_path), "summary", run_id, "--json")
+    assert machine.exit_code == 0, machine.output
+    payload = json.loads(machine.output)
+    assert payload["run"]["run_id"] == run_id
+    assert payload["run"]["trigger"] == "not-recorded"
+    assert payload["run"]["scenario_status"] == "not-recorded"
+
+
 def test_run_record_cli_invalid_previous_run_rejected(tmp_path: Path) -> None:
     missing = uuid4()
     result = invoke(
