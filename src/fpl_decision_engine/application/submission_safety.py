@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import hashlib
+import json
+import os
+import tempfile
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
+from typing import cast
 from uuid import UUID
 
 from fpl_decision_engine.domain.decision_bundle import DecisionBundleV1, SubmittedDecision
@@ -15,6 +21,13 @@ from fpl_decision_engine.domain.manager_state import (
     ManagerStateSnapshot,
     ManagerVerification,
 )
+
+SUBMISSION_SAFETY_ARTEFACT_KIND = "submission-safety-result-v1"
+SUBMISSION_SAFETY_SCHEMA_VERSION = 1
+
+
+class SubmissionSafetyArtifactError(RuntimeError):
+    """Raised when persisted submission-safety evidence cannot be replayed safely."""
 
 
 class SafetyStatus(StrEnum):
@@ -51,6 +64,15 @@ class SubmissionSafetyResult:
     acknowledgement_required: bool = False
     acknowledged: bool = False
     actual_choice: SubmittedDecision | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SubmissionSafetyArtifact:
+    """Immutable content-addressed reference to one persisted safety result."""
+
+    path: Path
+    reference: str
+    sha256: str
 
 
 def plan_submission(
@@ -203,6 +225,219 @@ def verify_submission(
         decision_run_id=final_decision.decision_run_id,
         decision_identity=_decision_identity(final_decision),
     )
+
+
+def serialize_submission_safety_result(result: SubmissionSafetyResult) -> bytes:
+    """Serialize a safety result canonically for immutable provenance recording."""
+    payload = {
+        "schema_version": SUBMISSION_SAFETY_SCHEMA_VERSION,
+        "kind": SUBMISSION_SAFETY_ARTEFACT_KIND,
+        "phase": result.phase,
+        "status": result.status.value,
+        "blocking": result.blocking,
+        "details": result.details,
+        "manager_state_identity": result.manager_state_identity,
+        "decision_run_id": str(result.decision_run_id) if result.decision_run_id else None,
+        "decision_identity": result.decision_identity,
+        "previous_reconciliation": result.previous_reconciliation.value,
+        "acknowledgement_required": result.acknowledgement_required,
+        "acknowledged": result.acknowledged,
+        "actual_choice": (
+            result.actual_choice.model_dump(mode="json")
+            if result.actual_choice is not None
+            else None
+        ),
+    }
+    content = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return (content + "\n").encode()
+
+
+def write_submission_safety_result(
+    result: SubmissionSafetyResult, *, state_root: Path
+) -> SubmissionSafetyArtifact:
+    """Publish an immutable content-addressed submission-safety artefact."""
+    content = serialize_submission_safety_result(result)
+    digest = hashlib.sha256(content).hexdigest()
+    directory = state_root / "submission-safety"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{digest}.json"
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{digest}.", dir=directory)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            os.link(temporary, path)
+        except FileExistsError:
+            if path.read_bytes() != content:
+                raise ValueError(
+                    "submission-safety artefact hash path contains conflicting bytes"
+                ) from None
+    finally:
+        temporary.unlink(missing_ok=True)
+    return SubmissionSafetyArtifact(path=path, reference=str(path), sha256=digest)
+
+
+def load_submission_safety_result(
+    *,
+    reference: str,
+    sha256: str,
+    expected_phase: str | None = None,
+) -> SubmissionSafetyResult:
+    """Read, hash-check and reconstruct one persisted safety result."""
+    try:
+        content = Path(reference).read_bytes()
+    except OSError as exc:
+        raise SubmissionSafetyArtifactError(
+            f"cannot read submission-safety artefact {reference!r}: {exc}"
+        ) from exc
+    actual_sha256 = hashlib.sha256(content).hexdigest()
+    if actual_sha256 != sha256:
+        raise SubmissionSafetyArtifactError(
+            "submission-safety artefact SHA-256 mismatch: "
+            f"claimed {sha256}, computed {actual_sha256}"
+        )
+    try:
+        raw_payload = json.loads(content)
+    except json.JSONDecodeError as exc:
+        raise SubmissionSafetyArtifactError(
+            f"submission-safety artefact is not valid JSON: {exc}"
+        ) from exc
+    if not isinstance(raw_payload, dict):
+        raise SubmissionSafetyArtifactError("submission-safety artefact must be a JSON object")
+    payload = cast(dict[str, object], raw_payload)
+    if payload.get("schema_version") != SUBMISSION_SAFETY_SCHEMA_VERSION:
+        raise SubmissionSafetyArtifactError(
+            "unsupported submission-safety artefact schema_version "
+            f"{payload.get('schema_version')!r}"
+        )
+    if payload.get("kind") != SUBMISSION_SAFETY_ARTEFACT_KIND:
+        raise SubmissionSafetyArtifactError(
+            f"unexpected submission-safety artefact kind {payload.get('kind')!r}"
+        )
+    result = _result_from_payload(payload)
+    if expected_phase is not None and result.phase != expected_phase:
+        raise SubmissionSafetyArtifactError(
+            f"submission-safety artefact phase {result.phase!r} does not match "
+            f"expected {expected_phase!r}"
+        )
+    _validate_result_consistency(result)
+    return result
+
+
+def _result_from_payload(payload: dict[str, object]) -> SubmissionSafetyResult:
+    try:
+        phase = _required_str(payload, "phase")
+        status = SafetyStatus(_required_str(payload, "status"))
+        blocking = _required_bool(payload, "blocking")
+        actual_payload = payload.get("actual_choice")
+        actual_choice = (
+            SubmittedDecision.model_validate(actual_payload)
+            if actual_payload is not None
+            else None
+        )
+        decision_run_id_value = _optional_str(payload, "decision_run_id")
+        raw_details = payload.get("details", ())
+        if not isinstance(raw_details, list | tuple):
+            raise ValueError("details must be a list of strings")
+        details: list[str] = []
+        for item in cast(Sequence[object], raw_details):
+            if not isinstance(item, str):
+                raise ValueError("details must be a list of strings")
+            details.append(item)
+        return SubmissionSafetyResult(
+            phase=phase,
+            status=status,
+            blocking=blocking,
+            details=tuple(details),
+            manager_state_identity=_optional_str(payload, "manager_state_identity"),
+            decision_run_id=UUID(decision_run_id_value)
+            if decision_run_id_value is not None
+            else None,
+            decision_identity=_optional_str(payload, "decision_identity"),
+            previous_reconciliation=PreviousReconciliation(
+                _optional_str(payload, "previous_reconciliation")
+                or PreviousReconciliation.NOT_SUPPLIED.value
+            ),
+            acknowledgement_required=_optional_bool(
+                payload, "acknowledgement_required", default=False
+            ),
+            acknowledged=_optional_bool(payload, "acknowledged", default=False),
+            actual_choice=actual_choice,
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SubmissionSafetyArtifactError(
+            f"invalid submission-safety artefact payload: {exc}"
+        ) from exc
+
+
+def _required_str(payload: dict[str, object], key: str) -> str:
+    value = payload[key]
+    if not isinstance(value, str):
+        raise TypeError(f"{key} must be a string")
+    return value
+
+
+def _optional_str(payload: dict[str, object], key: str) -> str | None:
+    value = payload.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError(f"{key} must be a string or null")
+    return value
+
+
+def _required_bool(payload: dict[str, object], key: str) -> bool:
+    value = payload[key]
+    if not isinstance(value, bool):
+        raise TypeError(f"{key} must be a boolean")
+    return value
+
+
+def _optional_bool(payload: dict[str, object], key: str, *, default: bool) -> bool:
+    value = payload.get(key, default)
+    if not isinstance(value, bool):
+        raise TypeError(f"{key} must be a boolean")
+    return value
+
+
+def _validate_result_consistency(result: SubmissionSafetyResult) -> None:
+    if result.phase == "PRE_EXECUTION":
+        if result.status not in (SafetyStatus.SAFE, SafetyStatus.BLOCKED):
+            raise SubmissionSafetyArtifactError(
+                "PRE_EXECUTION safety artefact has invalid status "
+                f"{result.status.value!r}"
+            )
+        if result.actual_choice is not None:
+            raise SubmissionSafetyArtifactError(
+                "PRE_EXECUTION safety artefact must not contain ACTUAL_CHOICE"
+            )
+    elif result.phase == "POST_EXECUTION":
+        if result.status not in (
+            SafetyStatus.MATCHED,
+            SafetyStatus.MISMATCHED,
+            SafetyStatus.UNVERIFIED,
+            SafetyStatus.SOURCE_UNAVAILABLE,
+        ):
+            raise SubmissionSafetyArtifactError(
+                "POST_EXECUTION safety artefact has invalid status "
+                f"{result.status.value!r}"
+            )
+        if result.status is SafetyStatus.MATCHED and result.actual_choice is None:
+            raise SubmissionSafetyArtifactError(
+                "MATCHED POST_EXECUTION safety artefact requires ACTUAL_CHOICE"
+            )
+    else:
+        raise SubmissionSafetyArtifactError(
+            f"unsupported submission-safety phase {result.phase!r}"
+        )
+    expected_blocking = result.status not in (SafetyStatus.SAFE, SafetyStatus.MATCHED)
+    if result.blocking is not expected_blocking:
+        raise SubmissionSafetyArtifactError(
+            f"submission-safety blocking flag conflicts with status {result.status.value}"
+        )
 
 
 def _state_block(result: ManagerStateResult) -> bool:

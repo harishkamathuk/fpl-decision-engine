@@ -195,3 +195,15 @@ def test_a10_provider_shape_is_not_exposed_as_domain_fields() -> None:
     assert isinstance(result, object)
     assert not hasattr(result, "picks")
     assert not hasattr(result, "element_type")
+
+
+def test_a11_process_local_secret_header_injection_allows_acquisition() -> None:
+    http = valid_http()
+    result = source(http=http).acquire(
+        entry_id=ENTRY_ID,
+        target_event=GameweekNumber(value=1),
+    )
+
+    assert result.manager_entry_id == ENTRY_ID
+    assert all(headers["Cookie"] == "session-secret" for _, headers in http.calls)
+    assert all(headers["Authorization"] == "Bearer secret" for _, headers in http.calls)

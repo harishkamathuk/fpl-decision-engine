@@ -1,5 +1,6 @@
 """Deterministic acceptance tests for Issue #88 submission safety ordering/identity."""
 
+import json
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid5
 
@@ -7,8 +8,13 @@ import pytest
 
 from fpl_decision_engine.application import plan_submission, verify_submission
 from fpl_decision_engine.application.submission_safety import (
+    SUBMISSION_SAFETY_ARTEFACT_KIND,
     PreviousReconciliation,
     SafetyStatus,
+    SubmissionSafetyArtifactError,
+    load_submission_safety_result,
+    serialize_submission_safety_result,
+    write_submission_safety_result,
 )
 from fpl_decision_engine.domain import (
     DecisionBundleV1,
@@ -324,3 +330,124 @@ def test_post_execution_failure_has_no_cached_fallback() -> None:
     )
     assert observed.status is SafetyStatus.SOURCE_UNAVAILABLE
     assert observed.actual_choice is None
+
+
+def matched_result():
+    return verify_submission(
+        decision(),
+        result(),
+        player_element_ids=ELEMENT_IDS,
+        element_player_ids=REVERSE,
+    )
+
+
+def test_safety_result_round_trip_contains_kind_and_is_idempotent(tmp_path) -> None:
+    safety = matched_result()
+
+    first = write_submission_safety_result(safety, state_root=tmp_path)
+    second = write_submission_safety_result(safety, state_root=tmp_path)
+    payload = json.loads(first.path.read_text())
+    loaded = load_submission_safety_result(
+        reference=first.reference,
+        sha256=first.sha256,
+        expected_phase="POST_EXECUTION",
+    )
+
+    assert first == second
+    assert payload["schema_version"] == 1
+    assert payload["kind"] == SUBMISSION_SAFETY_ARTEFACT_KIND
+    assert loaded == safety
+
+
+def test_safety_result_loader_rejects_wrong_kind(tmp_path) -> None:
+    artifact = write_submission_safety_result(matched_result(), state_root=tmp_path)
+    payload = json.loads(artifact.path.read_text())
+    payload["kind"] = "different"
+    tampered = tmp_path / "wrong-kind.json"
+    tampered.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(SubmissionSafetyArtifactError, match="kind"):
+        load_submission_safety_result(
+            reference=str(tampered),
+            sha256=__import__("hashlib").sha256(tampered.read_bytes()).hexdigest(),
+        )
+
+
+def test_safety_result_loader_rejects_wrong_schema(tmp_path) -> None:
+    artifact = write_submission_safety_result(matched_result(), state_root=tmp_path)
+    payload = json.loads(artifact.path.read_text())
+    payload["schema_version"] = 999
+    tampered = tmp_path / "wrong-schema.json"
+    tampered.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(SubmissionSafetyArtifactError, match="schema_version"):
+        load_submission_safety_result(
+            reference=str(tampered),
+            sha256=__import__("hashlib").sha256(tampered.read_bytes()).hexdigest(),
+        )
+
+
+def test_safety_result_loader_rejects_malformed_json(tmp_path) -> None:
+    path = tmp_path / "malformed.json"
+    path.write_text("{not-json", encoding="utf-8")
+
+    with pytest.raises(SubmissionSafetyArtifactError, match="not valid JSON"):
+        load_submission_safety_result(
+            reference=str(path),
+            sha256=__import__("hashlib").sha256(path.read_bytes()).hexdigest(),
+        )
+
+
+def test_safety_result_loader_rejects_hash_mismatch_and_tampering(tmp_path) -> None:
+    artifact = write_submission_safety_result(matched_result(), state_root=tmp_path)
+    original_hash = artifact.sha256
+    payload = json.loads(artifact.path.read_text())
+    payload["status"] = "MISMATCHED"
+    artifact.path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(SubmissionSafetyArtifactError, match="SHA-256 mismatch"):
+        load_submission_safety_result(reference=artifact.reference, sha256=original_hash)
+
+
+def test_safety_result_loader_rejects_wrong_expected_phase(tmp_path) -> None:
+    artifact = write_submission_safety_result(matched_result(), state_root=tmp_path)
+
+    with pytest.raises(SubmissionSafetyArtifactError, match="phase"):
+        load_submission_safety_result(
+            reference=artifact.reference,
+            sha256=artifact.sha256,
+            expected_phase="PRE_EXECUTION",
+        )
+
+
+def test_safety_result_writer_rejects_conflicting_hash_path(tmp_path, monkeypatch) -> None:
+    import fpl_decision_engine.application.submission_safety as module
+
+    class FakeHash:
+        def __init__(self, content: bytes) -> None:
+            del content
+
+        def hexdigest(self) -> str:
+            return "0" * 64
+
+    monkeypatch.setattr(module.hashlib, "sha256", FakeHash)
+    write_submission_safety_result(matched_result(), state_root=tmp_path)
+
+    with pytest.raises(ValueError, match="conflicting bytes"):
+        write_submission_safety_result(
+            plan_submission(
+                result(),
+                decision(),
+                expected_entry_id=42,
+                expected_gameweek=1,
+                player_element_ids=ELEMENT_IDS,
+            ),
+            state_root=tmp_path,
+        )
+
+
+def test_safety_serialization_excludes_secret_material() -> None:
+    content = serialize_submission_safety_result(matched_result()).decode()
+    assert "session-secret" not in content
+    assert "Authorization" not in content
+    assert "Cookie" not in content
