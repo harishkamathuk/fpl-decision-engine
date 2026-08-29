@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import cast
 from uuid import UUID
 
+from fpl_decision_engine.application.decision_bundles import serialize_decision_bundle
 from fpl_decision_engine.domain.decision_bundle import DecisionBundleV1, SubmittedDecision
 from fpl_decision_engine.domain.manager_state import (
     ManagerComparison,
@@ -22,8 +23,13 @@ from fpl_decision_engine.domain.manager_state import (
     ManagerVerification,
 )
 
-SUBMISSION_SAFETY_ARTEFACT_KIND = "submission-safety-result-v1"
-SUBMISSION_SAFETY_SCHEMA_VERSION = 1
+SUBMISSION_SAFETY_ARTEFACT_KIND_V1 = "submission-safety-result-v1"
+SUBMISSION_SAFETY_ARTEFACT_KIND = "submission-safety-result-v2"
+SUBMISSION_SAFETY_SCHEMA_VERSION = 2
+_SUBMISSION_SAFETY_KINDS = {
+    1: SUBMISSION_SAFETY_ARTEFACT_KIND_V1,
+    SUBMISSION_SAFETY_SCHEMA_VERSION: SUBMISSION_SAFETY_ARTEFACT_KIND,
+}
 
 
 class SubmissionSafetyArtifactError(RuntimeError):
@@ -285,8 +291,14 @@ def load_submission_safety_result(
     reference: str,
     sha256: str,
     expected_phase: str | None = None,
+    expected_decision: DecisionBundleV1 | None = None,
 ) -> SubmissionSafetyResult:
-    """Read, hash-check and reconstruct one persisted safety result."""
+    """Read, hash-check and reconstruct one persisted safety result.
+
+    Current v2 evidence binds to the SHA-256 of the exact canonical DecisionBundle
+    bytes. Historical v1 evidence remains readable, but cannot be reused as proof for
+    an expected decision because its decision identity was an opaque Python repr.
+    """
     try:
         content = Path(reference).read_bytes()
     except OSError as exc:
@@ -308,12 +320,15 @@ def load_submission_safety_result(
     if not isinstance(raw_payload, dict):
         raise SubmissionSafetyArtifactError("submission-safety artefact must be a JSON object")
     payload = cast(dict[str, object], raw_payload)
-    if payload.get("schema_version") != SUBMISSION_SAFETY_SCHEMA_VERSION:
+    schema_version = payload.get("schema_version")
+    if schema_version not in _SUBMISSION_SAFETY_KINDS:
         raise SubmissionSafetyArtifactError(
             "unsupported submission-safety artefact schema_version "
-            f"{payload.get('schema_version')!r}"
+            f"{schema_version!r}"
         )
-    if payload.get("kind") != SUBMISSION_SAFETY_ARTEFACT_KIND:
+    assert isinstance(schema_version, int)
+    expected_kind = _SUBMISSION_SAFETY_KINDS[schema_version]
+    if payload.get("kind") != expected_kind:
         raise SubmissionSafetyArtifactError(
             f"unexpected submission-safety artefact kind {payload.get('kind')!r}"
         )
@@ -324,6 +339,9 @@ def load_submission_safety_result(
             f"expected {expected_phase!r}"
         )
     _validate_result_consistency(result)
+    _validate_decision_binding(
+        result, schema_version=schema_version, expected_decision=expected_decision
+    )
     return result
 
 
@@ -440,6 +458,43 @@ def _validate_result_consistency(result: SubmissionSafetyResult) -> None:
         )
 
 
+def _validate_decision_binding(
+    result: SubmissionSafetyResult,
+    *,
+    schema_version: int,
+    expected_decision: DecisionBundleV1 | None,
+) -> None:
+    if schema_version == 1:
+        if expected_decision is not None:
+            raise SubmissionSafetyArtifactError(
+                "submission-safety schema_version 1 cannot prove canonical decision identity"
+            )
+        return
+    identity = result.decision_identity
+    if identity is not None and (
+        len(identity) != 64
+        or any(character not in "0123456789abcdef" for character in identity)
+    ):
+        raise SubmissionSafetyArtifactError(
+            "submission-safety decision_identity must be a lowercase SHA-256 digest"
+        )
+    if (result.decision_run_id is None) != (identity is None):
+        raise SubmissionSafetyArtifactError(
+            "submission-safety decision_run_id and decision_identity must be recorded together"
+        )
+    if expected_decision is None:
+        return
+    if result.decision_run_id != expected_decision.decision_run_id:
+        raise SubmissionSafetyArtifactError(
+            "submission-safety decision_run_id does not match the expected DecisionBundle"
+        )
+    expected_identity = _decision_identity(expected_decision)
+    if identity != expected_identity:
+        raise SubmissionSafetyArtifactError(
+            "submission-safety decision_identity does not match the expected DecisionBundle"
+        )
+
+
 def _state_block(result: ManagerStateResult) -> bool:
     return result.verification is not ManagerVerification.VERIFIED
 
@@ -492,7 +547,7 @@ def _compare_submission_state(
 def _decision_identity(decision: DecisionBundleV1 | None) -> str | None:
     if decision is None:
         return None
-    return repr(decision.recommendation.identity)
+    return hashlib.sha256(serialize_decision_bundle(decision)).hexdigest()
 
 
 def _snapshot_from_decision(
