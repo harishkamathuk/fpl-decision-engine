@@ -1,5 +1,13 @@
 # GW1 decision runbook
 
+> **SUPERSEDED — archived 2026-08-29.**
+>
+> This manual 26-stage runbook is retained for historical and forensic context only. The
+> enforced Touchline control plane is now the supported operating procedure: see
+> [`docs/operations/README.md`](../operations/README.md) for the quickstart and
+> [`docs/operations/cli-reference.md`](../operations/cli-reference.md) for the current CLI
+> surface. Do not follow this document as the primary operating procedure.
+
 This is the supported offline process for the final blank-squad GW1 decision. Run it
 from the tagged release candidate, not from an arbitrary later `develop` checkout.
 Official FPL and projection files are supplied manually; this process never retrieves

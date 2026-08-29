@@ -101,8 +101,11 @@ The project currently includes:
   conflict handling without mutating unconditional expected points;
 - blank-squad DecisionRun persistence and immutable versioned GW1 decision bundles that keep the
   model recommendation separate from the actual submitted choice;
-- a reproducible GW1 operational runbook covering evidence capture, optimisation, review and manual
-  submission;
+- an enforced Touchline control plane for Gameweek runs: doctor diagnostics, a resumable
+  orchestrator, a typed run-record provenance ledger and deterministic execution summaries — see
+  [`docs/operations/README.md`](docs/operations/README.md) for the operational quickstart
+  (the historical manual runbook is archived and superseded at
+  [`docs/archive/gw1-operational-runbook.md`](docs/archive/gw1-operational-runbook.md));
 - `fpl sync --source snapshot --input <directory-or-manifest>` with typed failure reporting;
 - reusable provider contract-test helpers;
 - ADRs and enforced issue-numbered branch naming.
