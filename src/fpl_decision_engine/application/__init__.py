@@ -94,6 +94,13 @@ from .submission_safety import (
     verify_submission,
     write_submission_safety_result,
 )
+from .transfer_candidates import (
+    EvaluatedTransferCandidate,
+    TransferCandidate,
+    enumerate_and_rank,
+    enumerate_transfer_candidates,
+    rank_transfer_candidates,
+)
 from .transfer_runs import persist_transfer_decision_run
 
 __all__ = [
@@ -176,4 +183,9 @@ __all__ = [
     "review_scenario_candidate",
     "serialize_frozen_scenario",
     "write_frozen_scenario",
+    "EvaluatedTransferCandidate",
+    "TransferCandidate",
+    "enumerate_and_rank",
+    "enumerate_transfer_candidates",
+    "rank_transfer_candidates",
 ]
