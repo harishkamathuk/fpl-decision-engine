@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -9,6 +10,7 @@ from uuid import UUID, uuid5
 
 import pytest
 
+from fpl_decision_engine.application.decision_bundles import serialize_decision_bundle
 from fpl_decision_engine.application.doctor import (
     DiagnosticCheck,
     DiagnosticStatus,
@@ -102,7 +104,7 @@ def baseline_outcome() -> BaselineOutcome:
         recommendation=bundle.recommendation,
         decision=bundle,
         reference="/state/decision-bundles/baseline.json",
-        sha256="d" * 64,
+        sha256=hashlib.sha256(serialize_decision_bundle(bundle)).hexdigest(),
         summary="objective=72.500000",
     )
 
@@ -191,7 +193,9 @@ class SequenceManagerState:
 
 def load_decision_bundle_for_test(*, reference: str, sha256: str) -> DecisionBundleV1:
     assert reference == "/state/decision-bundles/baseline.json"
-    assert sha256 == "d" * 64
+    assert sha256 == hashlib.sha256(
+        serialize_decision_bundle(decision_bundle())
+    ).hexdigest()
     return decision_bundle()
 
 

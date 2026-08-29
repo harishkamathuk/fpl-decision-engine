@@ -360,7 +360,9 @@ class GameweekOrchestrator:
     def _run_pre_submission_verify_stage(
         self, run_id: UUID, request: OrchestratorRequest, decision: DecisionBundleV1
     ) -> bool:
-        if not self._prepare_submission_stage(run_id, PRE_SUBMISSION_VERIFY_STAGE):
+        if not self._prepare_submission_stage(
+            run_id, PRE_SUBMISSION_VERIFY_STAGE, decision=decision
+        ):
             return True
         try:
             entry_id = self._expected_entry_id(request)
@@ -439,7 +441,9 @@ class GameweekOrchestrator:
     def _run_post_submission_verify_stage(
         self, run_id: UUID, request: OrchestratorRequest, decision: DecisionBundleV1
     ) -> bool:
-        if not self._prepare_submission_stage(run_id, POST_SUBMISSION_VERIFY_STAGE):
+        if not self._prepare_submission_stage(
+            run_id, POST_SUBMISSION_VERIFY_STAGE, decision=decision
+        ):
             return True
         try:
             entry_id = self._expected_entry_id(request)
@@ -481,13 +485,21 @@ class GameweekOrchestrator:
         recorded = record.decisions[-1]
         return self._decision_loader(reference=recorded.reference, sha256=recorded.sha256)
 
-    def _prepare_submission_stage(self, run_id: UUID, stage: str) -> bool:
+    def _prepare_submission_stage(
+        self,
+        run_id: UUID,
+        stage: str,
+        *,
+        decision: DecisionBundleV1 | None = None,
+    ) -> bool:
         record = self._current(run_id)
         latest = record.latest_attempt(stage)
         if latest is None:
             return True
         if latest.status in (StageState.PASS, StageState.WARN):
-            self._validate_reusable_submission_stage(run_id, stage, latest.attempt)
+            self._validate_reusable_submission_stage(
+                run_id, stage, latest.attempt, decision=decision
+            )
             return False
         if latest.status in (StageState.FAIL, StageState.BLOCKED):
             self._records.retry_stage(
@@ -505,7 +517,12 @@ class GameweekOrchestrator:
         )
 
     def _validate_reusable_submission_stage(
-        self, run_id: UUID, stage: str, attempt: int
+        self,
+        run_id: UUID,
+        stage: str,
+        attempt: int,
+        *,
+        decision: DecisionBundleV1 | None,
     ) -> None:
         if stage not in (PRE_SUBMISSION_VERIFY_STAGE, POST_SUBMISSION_VERIFY_STAGE):
             return
@@ -525,11 +542,17 @@ class GameweekOrchestrator:
         expected_phase = (
             "PRE_EXECUTION" if stage == PRE_SUBMISSION_VERIFY_STAGE else "POST_EXECUTION"
         )
+        if decision is None:
+            raise OrchestratorResumeError(
+                f"run {run_id} stage {stage!r} cannot be reused without the exact "
+                "recorded DecisionBundle"
+            )
         try:
             result = load_submission_safety_result(
                 reference=artefact.reference,
                 sha256=artefact.sha256,
                 expected_phase=expected_phase,
+                expected_decision=decision,
             )
         except SubmissionSafetyArtifactError as exc:
             raise OrchestratorResumeError(

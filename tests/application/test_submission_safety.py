@@ -1,14 +1,20 @@
 """Deterministic acceptance tests for Issue #88 submission safety ordering/identity."""
 
+import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid5
 
 import pytest
 
-from fpl_decision_engine.application import plan_submission, verify_submission
+from fpl_decision_engine.application import (
+    plan_submission,
+    serialize_decision_bundle,
+    verify_submission,
+)
 from fpl_decision_engine.application.submission_safety import (
     SUBMISSION_SAFETY_ARTEFACT_KIND,
+    SUBMISSION_SAFETY_ARTEFACT_KIND_V1,
     PreviousReconciliation,
     SafetyStatus,
     SubmissionSafetyArtifactError,
@@ -104,6 +110,21 @@ def decision() -> DecisionBundleV1:
         ),
         recommendation=selection,
     )
+
+
+def different_decision() -> DecisionBundleV1:
+    original = decision()
+    recommendation = original.recommendation.model_copy(
+        update={
+            "captain_id": original.recommendation.vice_captain_id,
+            "vice_captain_id": original.recommendation.captain_id,
+        }
+    )
+    return original.model_copy(update={"recommendation": recommendation})
+
+
+def canonical_decision_identity(bundle: DecisionBundleV1) -> str:
+    return hashlib.sha256(serialize_decision_bundle(bundle)).hexdigest()
 
 
 def test_verified_same_state_is_safe_and_previous_difference_requires_ack() -> None:
@@ -351,10 +372,11 @@ def test_safety_result_round_trip_contains_kind_and_is_idempotent(tmp_path) -> N
         reference=first.reference,
         sha256=first.sha256,
         expected_phase="POST_EXECUTION",
+        expected_decision=decision(),
     )
 
     assert first == second
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
     assert payload["kind"] == SUBMISSION_SAFETY_ARTEFACT_KIND
     assert loaded == safety
 
@@ -451,3 +473,113 @@ def test_safety_serialization_excludes_secret_material() -> None:
     assert "session-secret" not in content
     assert "Authorization" not in content
     assert "Cookie" not in content
+
+
+
+def test_decision_identity_reuses_canonical_decision_bundle_hash() -> None:
+    first = decision()
+    semantically_identical = DecisionBundleV1.model_validate(first.model_dump())
+    different = different_decision()
+
+    pre = plan_submission(
+        result(),
+        first,
+        expected_entry_id=42,
+        expected_gameweek=1,
+        player_element_ids=ELEMENT_IDS,
+    )
+    identical_pre = plan_submission(
+        result(),
+        semantically_identical,
+        expected_entry_id=42,
+        expected_gameweek=1,
+        player_element_ids=ELEMENT_IDS,
+    )
+    different_pre = plan_submission(
+        result(),
+        different,
+        expected_entry_id=42,
+        expected_gameweek=1,
+        player_element_ids=ELEMENT_IDS,
+    )
+
+    assert pre.decision_identity == canonical_decision_identity(first)
+    assert pre.decision_identity == identical_pre.decision_identity
+    assert pre.decision_identity != different_pre.decision_identity
+    assert pre.decision_identity != repr(first.recommendation.identity)
+
+
+@pytest.mark.parametrize(
+    ("safety", "phase"),
+    [
+        (
+            lambda: plan_submission(
+                result(),
+                decision(),
+                expected_entry_id=42,
+                expected_gameweek=1,
+                player_element_ids=ELEMENT_IDS,
+            ),
+            "PRE_EXECUTION",
+        ),
+        (matched_result, "POST_EXECUTION"),
+    ],
+)
+def test_pre_and_post_replay_bind_to_exact_intended_decision(
+    tmp_path, safety, phase: str
+) -> None:
+    artifact = write_submission_safety_result(safety(), state_root=tmp_path)
+
+    loaded = load_submission_safety_result(
+        reference=artifact.reference,
+        sha256=artifact.sha256,
+        expected_phase=phase,
+        expected_decision=decision(),
+    )
+
+    assert loaded.decision_identity == canonical_decision_identity(decision())
+    with pytest.raises(SubmissionSafetyArtifactError, match="decision_identity"):
+        load_submission_safety_result(
+            reference=artifact.reference,
+            sha256=artifact.sha256,
+            expected_phase=phase,
+            expected_decision=different_decision(),
+        )
+
+
+def test_replay_rejects_tampered_canonical_decision_identity(tmp_path) -> None:
+    artifact = write_submission_safety_result(matched_result(), state_root=tmp_path)
+    payload = json.loads(artifact.path.read_text())
+    payload["decision_identity"] = "0" * 64
+    tampered = tmp_path / "tampered-decision-identity.json"
+    tampered.write_text(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SubmissionSafetyArtifactError, match="decision_identity"):
+        load_submission_safety_result(
+            reference=str(tampered),
+            sha256=hashlib.sha256(tampered.read_bytes()).hexdigest(),
+            expected_decision=decision(),
+        )
+
+
+def test_historical_v1_is_readable_but_not_authoritative_for_resume(tmp_path) -> None:
+    payload = json.loads(serialize_submission_safety_result(matched_result()))
+    payload["schema_version"] = 1
+    payload["kind"] = SUBMISSION_SAFETY_ARTEFACT_KIND_V1
+    payload["decision_identity"] = "historical-python-representation"
+    historical = tmp_path / "historical-v1.json"
+    historical.write_text(json.dumps(payload), encoding="utf-8")
+    digest = hashlib.sha256(historical.read_bytes()).hexdigest()
+
+    assert load_submission_safety_result(
+        reference=str(historical), sha256=digest
+    ).decision_identity == "historical-python-representation"
+    with pytest.raises(SubmissionSafetyArtifactError, match="cannot prove"):
+        load_submission_safety_result(
+            reference=str(historical),
+            sha256=digest,
+            expected_decision=decision(),
+        )
