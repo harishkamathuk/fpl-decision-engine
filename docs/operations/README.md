@@ -71,7 +71,8 @@ provisional so it can be resumed.
 
 Full reference: [`cli-reference.md`](cli-reference.md). Troubleshooting:
 [`troubleshooting.md`](troubleshooting.md). Recovery and resume:
-[`recovery.md`](recovery.md).
+[`recovery.md`](recovery.md). UAT evidence template:
+[`uat-rehearsal.md`](uat-rehearsal.md).
 
 ## UAT rehearsals
 
@@ -85,5 +86,6 @@ deterministically by `tests/application/test_orchestration.py`.
 Rehearsals that exercise the full submission-safety stages require a live FPL cookie and
 operator participation (external FPL execution confirmation), so they are operator-executed:
 the exact commands and expected evidence are the same as a normal run against a disposable
-state root. Record the resulting `touchline run-record summary` output for each rehearsal as
-evidence.
+state root. Record each rehearsal using [`uat-rehearsal.md`](uat-rehearsal.md), including the
+commit SHA/release tag, timing, identities, parity result, interventions, failures, and final
+`touchline run-record summary` output.

@@ -11,6 +11,7 @@ from fpl_decision_engine.touchline_cli import app
 
 ROOT = Path(__file__).resolve().parents[1]
 OPERATIONS_DIR = ROOT / "docs" / "operations"
+UAT_GUIDE = OPERATIONS_DIR / "uat-rehearsal.md"
 ARCHIVE_RUNBOOK = ROOT / "docs" / "archive" / "gw1-operational-runbook.md"
 LEGACY_RUNBOOK = ROOT / "docs" / "gw1-operational-runbook.md"
 
@@ -115,6 +116,37 @@ def test_manual_runbook_archived_and_marked_superseded() -> None:
     content = ARCHIVE_RUNBOOK.read_text(encoding="utf-8")
     assert "SUPERSEDED" in content
     assert "operations/README.md" in content
+
+
+def test_uat_guide_is_linked_and_covers_auditable_acceptance_evidence() -> None:
+    readme = (OPERATIONS_DIR / "README.md").read_text(encoding="utf-8")
+    assert UAT_GUIDE.exists()
+    assert "uat-rehearsal.md" in readme
+    content = UAT_GUIDE.read_text(encoding="utf-8")
+    for topic in (
+        "Rehearsal number",
+        "Date",
+        "Operator",
+        "Start time",
+        "End time",
+        "Elapsed duration",
+        "Code revision / commit SHA",
+        "Release tag",
+        "Run ID",
+        "Evidence identity / hash",
+        "Manager-state identity/reference",
+        "Run completed successfully",
+        "Parity",
+        "Recovery/resume exercised",
+        "Operator intervention",
+        "Failure encountered",
+        "Final execution-summary reference/output",
+        "Overall rehearsal result",
+    ):
+        assert topic in content, f"UAT guide must capture: {topic}"
+    assert "three independent" in content
+    assert "under 10 minutes" in content
+    assert "No rehearsal may be claimed complete" in content
 
 
 def test_quickstart_covers_operator_workflow_topics() -> None:
