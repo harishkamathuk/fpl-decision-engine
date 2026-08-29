@@ -13,7 +13,15 @@ from fpl_decision_engine.application.manager_state import (
     verify_manager_state,
     write_manager_state,
 )
-from fpl_decision_engine.application.orchestration import ORCHESTRATOR_STAGES
+from fpl_decision_engine.application.orchestration import (
+    BASELINE_STAGE,
+    DOCTOR_STAGE,
+    EVIDENCE_STAGE,
+    OPERATOR_EXECUTION_CONFIRMATION_STAGE,
+    ORCHESTRATOR_STAGES,
+    POST_SUBMISSION_VERIFY_STAGE,
+    PRE_SUBMISSION_VERIFY_STAGE,
+)
 from fpl_decision_engine.domain import GameweekNumber, Position
 from fpl_decision_engine.domain.manager_state import (
     ManagerComparison,
@@ -296,8 +304,17 @@ class _Source:
         return self.value
 
 
-def test_t16_and_t18_scope_boundary_has_no_mutation_stage_or_optimiser_changes() -> None:
-    assert ORCHESTRATOR_STAGES == ("doctor", "evidence", "baseline")
+def test_t16_and_t18_scope_boundary_has_no_live_mutation_stage_or_optimiser_changes() -> None:
+    assert ORCHESTRATOR_STAGES == (
+        DOCTOR_STAGE,
+        EVIDENCE_STAGE,
+        BASELINE_STAGE,
+        PRE_SUBMISSION_VERIFY_STAGE,
+        OPERATOR_EXECUTION_CONFIRMATION_STAGE,
+        POST_SUBMISSION_VERIFY_STAGE,
+    )
+    assert "mutation" not in ORCHESTRATOR_STAGES
+    assert "submit" not in ORCHESTRATOR_STAGES
     assert not hasattr(_Source, "post")
 
 

@@ -9,8 +9,13 @@ before a Gameweek run without mutating anything.
 from __future__ import annotations
 
 import json
+import os
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, NoReturn
+from urllib.request import Request as UrlRequest
+from urllib.request import urlopen
 from uuid import UUID, uuid4
 
 import typer
@@ -22,8 +27,14 @@ from fpl_decision_engine.application.analytical_history import (
 from fpl_decision_engine.application.decision_bundles import load_decision_bundle
 from fpl_decision_engine.application.doctor import DiagnosticStatus, DoctorService
 from fpl_decision_engine.application.gameweek_evidence import (
+    GameweekEvidenceArtifact,
     InvalidEvidenceManifest,
     load_gameweek_evidence_artifact,
+    parse_gameweek_evidence_manifest,
+)
+from fpl_decision_engine.application.manager_state import (
+    ManagerStateSource,
+    acquire_manager_state,
 )
 from fpl_decision_engine.application.orchestration import (
     GameweekOrchestrator,
@@ -31,17 +42,31 @@ from fpl_decision_engine.application.orchestration import (
     OrchestratorRequest,
 )
 from fpl_decision_engine.application.run_record_service import RunRecordService
+from fpl_decision_engine.domain import (
+    GameweekNumber,
+    ManagerStateResult,
+    ManagerStateSnapshot,
+    Position,
+)
 from fpl_decision_engine.domain.run_record import (
     CloseOutcome,
     LegacyRunRecord,
     RunRecord,
     StageState,
 )
+from fpl_decision_engine.infrastructure.ingestion.snapshots import (
+    PreparedSnapshot,
+    RawSourceObject,
+)
 from fpl_decision_engine.infrastructure.orchestration import LocalBlankSquadBaselineRunner
 from fpl_decision_engine.infrastructure.persistence.analytical_artifacts import (
     FileAnalyticalArtifactRepository,
 )
 from fpl_decision_engine.infrastructure.persistence.run_records import RunRecordLedger
+from fpl_decision_engine.infrastructure.providers.fpl_snapshot import map_snapshot
+from fpl_decision_engine.infrastructure.providers.manager_state.fpl_api import (
+    OfficialFplManagerStateSource,
+)
 from fpl_decision_engine.ports.analytical_artifacts import AnalyticalArtifactError
 from fpl_decision_engine.ports.persistence import UnsupportedSchemaVersion
 from fpl_decision_engine.ports.run_records import RunRecordError
@@ -51,6 +76,89 @@ run_record_app = typer.Typer(
     no_args_is_help=True, help="Typed, atomic run-record provenance ledger"
 )
 app.add_typer(run_record_app, name="run-record")
+
+
+class _JsonHttpResponse:
+    def __init__(self, *, status_code: int, payload: object) -> None:
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self) -> object:
+        return self._payload
+
+
+class _UrlopenHttp:
+    def get(self, url: str, *, headers: Mapping[str, str], timeout: float) -> _JsonHttpResponse:
+        request = UrlRequest(url, headers=dict(headers))
+        with urlopen(request, timeout=timeout) as response:  # noqa: S310
+            return _JsonHttpResponse(
+                status_code=response.status,
+                payload=json.loads(response.read().decode("utf-8")),
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedManagerStateRunner:
+    source: ManagerStateSource
+    known_player_types: dict[int, Position]
+
+    def acquire(self, *, entry_id: int, target_event: GameweekNumber) -> ManagerStateResult:
+        return acquire_manager_state(
+            self.source,
+            entry_id=entry_id,
+            target_event=target_event,
+            known_player_types=self.known_player_types,
+        )
+
+
+def _submission_identity_maps(
+    artifact: GameweekEvidenceArtifact,
+) -> tuple[dict[int, Position], dict[UUID, int], dict[int, UUID]]:
+    manifest = parse_gameweek_evidence_manifest(artifact.read_bytes())
+    bootstrap = Path(manifest.snapshot.bootstrap.reference).read_bytes()
+    fixtures = Path(manifest.snapshot.fixtures.reference).read_bytes()
+    canonical = map_snapshot(
+        PreparedSnapshot(
+            provider_id=manifest.snapshot.provider_id,
+            observed_at=manifest.snapshot.observed_at,
+            season=manifest.season,
+            requested_snapshot_id=manifest.snapshot.snapshot_id,
+            objects=(
+                RawSourceObject(
+                    resource_name="bootstrap-static",
+                    original_filename=Path(manifest.snapshot.bootstrap.reference).name,
+                    data=bootstrap,
+                    sha256=manifest.snapshot.bootstrap.sha256,
+                ),
+                RawSourceObject(
+                    resource_name="fixtures",
+                    original_filename=Path(manifest.snapshot.fixtures.reference).name,
+                    data=fixtures,
+                    sha256=manifest.snapshot.fixtures.sha256,
+                ),
+            ),
+        )
+    )
+    player_element_ids: dict[UUID, int] = {}
+    known_player_types: dict[int, Position] = {}
+    for player in canonical.players:
+        refs = tuple(
+            ref
+            for ref in player.external_refs
+            if ref.provider == manifest.snapshot.provider_id
+        )
+        if len(refs) != 1:
+            raise ValueError(
+                f"canonical player {player.id} must have exactly one "
+                f"{manifest.snapshot.provider_id} element reference"
+            )
+        element_id = int(refs[0].external_id)
+        player_element_ids[player.id] = element_id
+        known_player_types[element_id] = player.position
+    if len(set(player_element_ids.values())) != len(player_element_ids):
+        raise ValueError("canonical player to FPL element mapping is ambiguous")
+    element_player_ids = {value: key for key, value in player_element_ids.items()}
+    return known_player_types, player_element_ids, element_player_ids
 
 
 @app.command("doctor")
@@ -114,6 +222,29 @@ def run_gameweek_command(
         UUID | None,
         typer.Option(help="Optional explicit ID for a fresh run."),
     ] = None,
+    fpl_entry_id: Annotated[
+        int | None,
+        typer.Option(help="Authenticated FPL manager entry id for submission safety."),
+    ] = None,
+    operator: Annotated[
+        str | None,
+        typer.Option(help="Operator identity for external FPL execution confirmation."),
+    ] = None,
+    confirm_operator_execution: Annotated[
+        bool,
+        typer.Option(
+            "--confirm-operator-execution",
+            help="Record that the operator reports external FPL action was attempted/completed.",
+        ),
+    ] = False,
+    previous_manager_state: Annotated[
+        Path | None,
+        typer.Option(help="Optional explicit previous verified manager-state artefact."),
+    ] = None,
+    previous_state_acknowledged: Annotated[
+        bool,
+        typer.Option(help="Acknowledge an explicit previous/current manager-state difference."),
+    ] = False,
 ) -> None:
     """Execute or explicitly resume doctor → evidence → baseline."""
 
@@ -122,12 +253,40 @@ def run_gameweek_command(
         raise typer.Exit(code=2)
     selected_run_id = resume or run_id or uuid4()
     try:
+        if fpl_entry_id is None:
+            raise ValueError("--fpl-entry-id is required for submission safety")
+        fpl_cookie = os.environ.get("FPL_COOKIE")
+        if not fpl_cookie:
+            raise ValueError(
+                "FPL_COOKIE runtime environment value is required for submission safety"
+            )
+        if confirm_operator_execution and not operator:
+            raise ValueError("--operator is required with --confirm-operator-execution")
         artifact = load_gameweek_evidence_artifact(evidence_manifest)
+        known_player_types, player_element_ids, element_player_ids = _submission_identity_maps(
+            artifact
+        )
+        previous_verified = (
+            ManagerStateSnapshot.model_validate_json(previous_manager_state.read_bytes())
+            if previous_manager_state is not None
+            else None
+        )
         records = RunRecordService(RunRecordLedger(state_root / "run-records"))
+        manager_state = _VerifiedManagerStateRunner(
+            OfficialFplManagerStateSource(
+                _UrlopenHttp(),
+                base_url="https://fantasy.premierleague.com",
+                headers={"Cookie": fpl_cookie},
+            ),
+            known_player_types,
+        )
         orchestrator = GameweekOrchestrator(
             records,
             doctor=DoctorService(cwd=Path.cwd(), state_root=state_root),
             baseline=LocalBlankSquadBaselineRunner(state_root=state_root),
+            manager_state=manager_state,
+            state_root=state_root,
+            decision_loader=load_decision_bundle,
         )
         result = orchestrator.run(
             OrchestratorRequest(
@@ -137,6 +296,13 @@ def run_gameweek_command(
                 code_revision=code_revision,
                 config_fingerprint=config_fingerprint,
                 evidence_artifact=artifact,
+                expected_entry_id=fpl_entry_id,
+                player_element_ids=player_element_ids,
+                element_player_ids=element_player_ids,
+                previous_verified_manager_state=previous_verified,
+                previous_state_acknowledged=previous_state_acknowledged,
+                operator=operator,
+                operator_execution_confirmed=confirm_operator_execution,
                 resume=resume is not None,
             )
         )

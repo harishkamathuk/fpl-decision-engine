@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
+from fpl_decision_engine.application.decision_bundles import load_decision_bundle
 from fpl_decision_engine.application.doctor import (
     DiagnosticCheck,
     DiagnosticStatus,
@@ -24,7 +25,14 @@ from fpl_decision_engine.application.orchestration import (
     OrchestratorRequest,
 )
 from fpl_decision_engine.application.run_record_service import RunRecordService
-from fpl_decision_engine.domain import GameweekNumber, SingleGameweekOptimisationRequest
+from fpl_decision_engine.domain import (
+    GameweekNumber,
+    ManagerStateResult,
+    ManagerStateSnapshot,
+    ManagerVerification,
+    RawManagerPick,
+    SingleGameweekOptimisationRequest,
+)
 from fpl_decision_engine.infrastructure.ingestion.snapshots import (
     PreparedSnapshot,
     RawSourceObject,
@@ -50,6 +58,54 @@ class PassDoctor:
                 ),
             )
         )
+
+
+class StaticManagerState:
+    def __init__(self, snapshot: ManagerStateSnapshot) -> None:
+        self._snapshot = snapshot
+
+    def acquire(self, *, entry_id: int, target_event: GameweekNumber) -> ManagerStateResult:
+        assert entry_id == 42
+        assert target_event == GameweekNumber(value=1)
+        return ManagerStateResult(
+            snapshot=self._snapshot,
+            verification=ManagerVerification.VERIFIED,
+        )
+
+
+def _player_element_ids(canonical) -> dict[UUID, int]:
+    result: dict[UUID, int] = {}
+    for player in canonical.players:
+        ref = next(item for item in player.external_refs if item.provider == "fpl")
+        result[player.id] = int(ref.external_id)
+    return result
+
+
+def _manager_state_from_decision(canonical, manual) -> ManagerStateSnapshot:
+    element_ids = _player_element_ids(canonical)
+    selected = tuple(member.player_id for member in manual.squad.members)
+    ordered = (*manual.starting_xi, *manual.bench)
+    return ManagerStateSnapshot(
+        source_provider="test",
+        source_endpoint="/state",
+        acquired_at_utc=NOW,
+        manager_entry_id=42,
+        authenticated_entry_id=42,
+        target_event_id=GameweekNumber(value=1),
+        target_deadline_time=NOW,
+        raw_picks=tuple(
+            RawManagerPick(element_id=element_ids[player], position=position)
+            for position, player in enumerate(ordered, start=1)
+        ),
+        squad_player_ids=tuple(element_ids[player] for player in selected),
+        starting_xi_player_ids=tuple(element_ids[player] for player in manual.starting_xi),
+        captain_player_id=element_ids[manual.captain_id],
+        vice_captain_player_id=element_ids[manual.vice_captain_id],
+        reserve_goalkeeper_player_id=element_ids[manual.bench[0]],
+        ordered_outfield_bench_player_ids=tuple(
+            element_ids[player] for player in manual.bench[1:]
+        ),
+    )
 
 
 def _write_baseline_evidence(tmp_path: Path) -> tuple[bytes, bytes, Path]:
@@ -189,10 +245,14 @@ def test_orchestrated_baseline_matches_existing_manual_path(tmp_path: Path) -> N
     artifact = write_gameweek_evidence_manifest(manifest, state_root=tmp_path / "state")
     run_id = UUID(int=84_901)
     ledger = RunRecordLedger(tmp_path / "state" / "run-records")
+    element_ids = _player_element_ids(canonical)
     orchestrator = GameweekOrchestrator(
         RunRecordService(ledger, now=lambda: NOW),
         doctor=PassDoctor(),
         baseline=LocalBlankSquadBaselineRunner(state_root=tmp_path / "state"),
+        manager_state=StaticManagerState(_manager_state_from_decision(canonical, manual)),
+        state_root=tmp_path / "state",
+        decision_loader=load_decision_bundle,
     )
 
     result = orchestrator.run(
@@ -203,6 +263,11 @@ def test_orchestrated_baseline_matches_existing_manual_path(tmp_path: Path) -> N
             code_revision="commit-84",
             config_fingerprint="config-84",
             evidence_artifact=artifact,
+            expected_entry_id=42,
+            player_element_ids=element_ids,
+            element_player_ids={value: key for key, value in element_ids.items()},
+            operator="operator",
+            operator_execution_confirmed=True,
         )
     )
 

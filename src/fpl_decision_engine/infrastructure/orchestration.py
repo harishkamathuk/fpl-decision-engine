@@ -150,6 +150,7 @@ class LocalBlankSquadBaselineRunner:
         )
         return BaselineOutcome(
             recommendation=bundle.recommendation,
+            decision=bundle,
             reference=bundle_artifact.reference,
             sha256=bundle_artifact.sha256,
             summary=summary,

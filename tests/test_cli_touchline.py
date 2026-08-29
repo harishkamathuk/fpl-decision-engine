@@ -145,7 +145,7 @@ def test_run_record_cli_promote_requires_completed(tmp_path: Path) -> None:
     assert "only a completed run may become authoritative" in result.output
 
 
-def test_run_gameweek_cli_exposes_explicit_resume_contract() -> None:
+def test_run_gameweek_cli_exposes_explicit_resume_and_submission_contract() -> None:
     sig = inspect.signature(run_gameweek_command)
     expected_params = {
         "evidence_manifest",
@@ -154,12 +154,23 @@ def test_run_gameweek_cli_exposes_explicit_resume_contract() -> None:
         "state_root",
         "resume",
         "run_id",
+        "fpl_entry_id",
+        "operator",
+        "confirm_operator_execution",
+        "previous_manager_state",
+        "previous_state_acknowledged",
     }
     actual_params = set(sig.parameters.keys())
     missing = expected_params - actual_params
     extra = actual_params - expected_params - {"season", "gameweek"}
     assert not missing, f"Missing parameters: {missing}"
     assert not extra, f"Unexpected parameters: {extra}"
+
+
+def test_run_gameweek_cli_does_not_accept_raw_cookie_argument() -> None:
+    sig = inspect.signature(run_gameweek_command)
+    assert "fpl_cookie" not in sig.parameters
+    assert "--fpl-cookie" not in runner.invoke(app, ["run-gameweek", "--help"]).output
 
 
 def test_analytics_cli_surfaces_analytical_failure_as_error_output(tmp_path: Path) -> None:
