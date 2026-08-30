@@ -47,6 +47,7 @@ from .gameweek_evidence import (
     validate_gameweek_evidence_references,
     write_gameweek_evidence_manifest,
 )
+from .lineup_evidence_validation import build_lineup_evidence_observation
 from .orchestration import (
     BASELINE_STAGE,
     DOCTOR_STAGE,
@@ -98,6 +99,7 @@ from .transfer_runs import persist_transfer_decision_run
 
 __all__ = [
     "AnalyticalArtifactService",
+    "build_lineup_evidence_observation",
     "AnalyticalHistoryError",
     "AnalyticalHistoryResult",
     "AnalyticalHistoryService",

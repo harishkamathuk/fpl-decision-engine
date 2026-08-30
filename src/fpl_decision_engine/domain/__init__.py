@@ -40,6 +40,13 @@ from .gameweek_evidence import (
     SnapshotEvidence,
     calculate_evidence_identity,
 )
+from .lineup_evidence_validation import (
+    SCHEMA_VERSION as LINEUP_EVIDENCE_VALIDATION_SCHEMA_VERSION,
+    LineupEvidenceClass,
+    LineupEvidenceProvenance,
+    LineupEvidenceStatus,
+    LineupEvidenceValidationObservation,
+)
 from .manager_state import (
     ManagerComparison,
     ManagerStateFailure,
@@ -158,6 +165,11 @@ __all__ = [
     "GameweekNumber",
     "League",
     "LeagueEntry",
+    "LINEUP_EVIDENCE_VALIDATION_SCHEMA_VERSION",
+    "LineupEvidenceClass",
+    "LineupEvidenceProvenance",
+    "LineupEvidenceStatus",
+    "LineupEvidenceValidationObservation",
     "ManagerState",
     "ManagerComparison",
     "ManagerStateFailure",
