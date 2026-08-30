@@ -42,7 +42,9 @@ COUNTS = {
 }
 
 
-def make_request(*, reversed_input: bool = False) -> SingleGameweekOptimisationRequest:
+def make_request(
+    *, reversed_input: bool = False, captain_fallback: bool = True
+) -> SingleGameweekOptimisationRequest:
     players: list[Player] = []
     projections: list[Projection] = []
     number = 1
@@ -86,6 +88,7 @@ def make_request(*, reversed_input: bool = False) -> SingleGameweekOptimisationR
         target_gameweek=GameweekNumber(value=1),
         players=tuple(players),
         projections=tuple(projections),
+        captain_fallback=captain_fallback,
     )
 
 
@@ -106,13 +109,16 @@ def provenance() -> DecisionInputProvenance:
 
 
 def build_bundle(
-    *, reversed_input: bool = False
+    *, reversed_input: bool = False, captain_fallback: bool = True
 ) -> tuple[
     SingleGameweekOptimisationRequest,
     SingleGameweekOptimisationResult,
     DecisionBundleV1,
 ]:
-    request = make_request(reversed_input=reversed_input)
+    request = make_request(
+        reversed_input=reversed_input,
+        captain_fallback=captain_fallback,
+    )
     result = HighsSingleGameweekOptimiser().optimise(request)
     bundle = build_decision_bundle(
         run_id=RUN_ID,
@@ -139,8 +145,28 @@ def submitted_from_recommendation(bundle: DecisionBundleV1) -> SubmittedDecision
     )
 
 
-def test_blank_squad_decision_run_round_trip_preserves_complete_identity(tmp_path) -> None:
-    request, result, bundle = build_bundle()
+@pytest.mark.parametrize(
+    ("captain_fallback", "expected_engine", "expected_objective_mode"),
+    [
+        (
+            True,
+            "highs-single-gameweek-v2",
+            "xi_plus_captain_with_vice_fallback",
+        ),
+        (
+            False,
+            "highs-single-gameweek-optimiser-v1",
+            "mean_only_xi_plus_captain",
+        ),
+    ],
+)
+def test_blank_squad_decision_run_round_trip_preserves_complete_identity(
+    tmp_path,
+    captain_fallback: bool,
+    expected_engine: str,
+    expected_objective_mode: str,
+) -> None:
+    request, result, bundle = build_bundle(captain_fallback=captain_fallback)
     artifact = write_decision_bundle(bundle, state_root=tmp_path / "state")
     repository = DuckDbDecisionRunRepository(tmp_path / "state" / "fpl.duckdb")
     run = persist_squad_decision_run(
@@ -160,9 +186,10 @@ def test_blank_squad_decision_run_round_trip_preserves_complete_identity(tmp_pat
     assert repository.get(RUN_ID) == run
     assert run.input_snapshot_ids == ("fpl:snapshot-a", "fpl:snapshot-b")
     assert run.projection_versions == ("fpl_forecast:phase9_frontend_v1:run-20260811",)
-    assert run.optimiser_engine == "highs-single-gameweek-optimiser-v1"
+    assert run.optimiser_engine == expected_engine
     assert run.strategy_mode == "blank_squad_single_gameweek"
-    assert run.objective_mode == "mean_only_xi_plus_captain"
+    assert run.objective_mode == expected_objective_mode
+    assert dict(run.optimiser_settings)["captain_fallback"] == str(captain_fallback).lower()
     assert run.output_artifact_references == (artifact.reference,)
     summary = run.diagnostic_summary or ""
     for member in result.squad.members:
