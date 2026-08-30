@@ -48,9 +48,12 @@ class LineupEvidenceProvenance(DomainModel):
 
     @model_validator(mode="after")
     def timestamps_are_ordered(self) -> LineupEvidenceProvenance:
-        if self.published_at is not None and self.updated_at is not None:
-            if self.updated_at < self.published_at:
-                raise ValueError("updated_at cannot precede published_at")
+        if (
+            self.published_at is not None
+            and self.updated_at is not None
+            and self.updated_at < self.published_at
+        ):
+            raise ValueError("updated_at cannot precede published_at")
         if self.retrieved_at < self.observed_at:
             raise ValueError("retrieved_at cannot precede observed_at")
         if self.processed_at is not None and self.processed_at < self.retrieved_at:
@@ -80,10 +83,18 @@ class LineupEvidenceValidationObservation(DomainModel):
 
     @model_validator(mode="after")
     def validate_classification(self) -> LineupEvidenceValidationObservation:
-        if self.evidence_status is LineupEvidenceStatus.CLASSIFIED and self.evidence_class is None:
+        if (
+            self.evidence_status is LineupEvidenceStatus.CLASSIFIED
+            and self.evidence_class is None
+        ):
             raise ValueError("CLASSIFIED observations require exactly one evidence class")
-        if self.evidence_status is not LineupEvidenceStatus.CLASSIFIED and self.evidence_class is not None:
-            raise ValueError("MISSING and CONFLICTING observations must not have an evidence class")
+        if (
+            self.evidence_status is not LineupEvidenceStatus.CLASSIFIED
+            and self.evidence_class is not None
+        ):
+            raise ValueError(
+                "MISSING and CONFLICTING observations must not have an evidence class"
+            )
         return self
 
     @property
@@ -135,4 +146,3 @@ class LineupEvidenceValidationObservation(DomainModel):
         """Return the frozen provider probability; no revised Projection is emitted."""
 
         return self.original_p_start
-EOF

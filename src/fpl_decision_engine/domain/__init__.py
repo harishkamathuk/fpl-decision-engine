@@ -40,8 +40,8 @@ from .gameweek_evidence import (
     SnapshotEvidence,
     calculate_evidence_identity,
 )
+from .lineup_evidence_validation import SCHEMA_VERSION as LINEUP_EVIDENCE_VALIDATION_SCHEMA_VERSION
 from .lineup_evidence_validation import (
-    SCHEMA_VERSION as LINEUP_EVIDENCE_VALIDATION_SCHEMA_VERSION,
     LineupEvidenceClass,
     LineupEvidenceProvenance,
     LineupEvidenceStatus,

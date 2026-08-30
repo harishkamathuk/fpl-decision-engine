@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import tempfile
 from pathlib import Path
+from typing import cast
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -39,9 +39,10 @@ def parse_lineup_observation(content: bytes) -> LineupEvidenceValidationObservat
     """Parse one supported observation without repairing tampered content."""
 
     try:
-        decoded = json.loads(content)
-        if not isinstance(decoded, dict):
+        decoded_value = json.loads(content)
+        if not isinstance(decoded_value, dict):
             raise ValueError("observation must be a JSON object")
+        decoded = cast(dict[str, object], decoded_value)
         if decoded.get("schema_version") != SCHEMA_VERSION:
             raise LineupObservationUnsupportedSchema(
                 f"unsupported lineup observation schema_version {decoded.get('schema_version')}"
@@ -62,10 +63,16 @@ class FileLineupEvidenceValidationObservationRepository:
     def save(self, observation: LineupEvidenceValidationObservation) -> None:
         """Atomically create an observation; identical bytes are idempotent."""
 
-        path = self._path(observation.season, observation.gameweek.value, observation.canonical_player_id)
+        path = self._path(
+            observation.season,
+            observation.gameweek.value,
+            observation.canonical_player_id,
+        )
         path.parent.mkdir(parents=True, exist_ok=True)
         content = serialize_lineup_observation(observation)
-        descriptor, temporary_name = tempfile.mkstemp(prefix=".observation.", suffix=".tmp", dir=path.parent)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=".observation.", suffix=".tmp", dir=path.parent
+        )
         temporary = Path(temporary_name)
         try:
             with os.fdopen(descriptor, "wb") as stream:
@@ -76,7 +83,9 @@ class FileLineupEvidenceValidationObservationRepository:
                 os.link(temporary, path)
             except FileExistsError:
                 if path.read_bytes() != content:
-                    raise LineupObservationConflict(f"immutable observation conflicts at {path}") from None
+                    raise LineupObservationConflict(
+                        f"immutable observation conflicts at {path}"
+                    ) from None
         finally:
             temporary.unlink(missing_ok=True)
 
