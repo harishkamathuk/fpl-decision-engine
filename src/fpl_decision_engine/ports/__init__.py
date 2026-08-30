@@ -32,6 +32,11 @@ from .lineup_evidence_validation import (
     LineupObservationPersistenceError,
     LineupObservationUnsupportedSchema,
 )
+from .lineup_outcomes import (
+    FinalityContract,
+    JoinedLineupOutcomeRepository,
+    RealisedOutcomeProvider,
+)
 from .optimisation import OptimisationEngine, OptimisationError, OptimisationErrorCode
 from .persistence import (
     CanonicalDatasetName,
@@ -106,6 +111,9 @@ __all__ = [
     "OptimisationEngine",
     "OptimisationError",
     "OptimisationErrorCode",
+    "FinalityContract",
+    "JoinedLineupOutcomeRepository",
+    "RealisedOutcomeProvider",
     "PlayerDataProvider",
     "ProjectionProvider",
     "ProviderAuthenticationError",
