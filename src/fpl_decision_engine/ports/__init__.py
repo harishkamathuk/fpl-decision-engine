@@ -25,6 +25,13 @@ from .errors import (
     ProviderRateLimitError,
     ProviderUnavailableError,
 )
+from .lineup_evidence_validation import (
+    LineupEvidenceValidationObservationRepository,
+    LineupObservationConflict,
+    LineupObservationNotFound,
+    LineupObservationPersistenceError,
+    LineupObservationUnsupportedSchema,
+)
 from .optimisation import OptimisationEngine, OptimisationError, OptimisationErrorCode
 from .persistence import (
     CanonicalDatasetName,
@@ -77,6 +84,11 @@ __all__ = [
     "PersistedAnalyticalArtifact",
     "ReviewGeneratorInput",
     "CanonicalDatasetName",
+    "LineupEvidenceValidationObservationRepository",
+    "LineupObservationConflict",
+    "LineupObservationNotFound",
+    "LineupObservationPersistenceError",
+    "LineupObservationUnsupportedSchema",
     "CanonicalRepository",
     "CanonicalSnapshot",
     "DatasetArtifact",
