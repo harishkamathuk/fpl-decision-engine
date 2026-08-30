@@ -47,6 +47,16 @@ from .lineup_evidence_validation import (
     LineupEvidenceStatus,
     LineupEvidenceValidationObservation,
 )
+from .lineup_outcomes import (
+    ChronologyDecision,
+    ChronologyInput,
+    ChronologyReason,
+    ChronologyStatus,
+    JoinedLineupOutcome,
+    MissingRealisedOutcome,
+    OutcomeState,
+    RealisedOutcome,
+)
 from .manager_state import (
     ManagerComparison,
     ManagerStateFailure,
@@ -170,6 +180,14 @@ __all__ = [
     "LineupEvidenceProvenance",
     "LineupEvidenceStatus",
     "LineupEvidenceValidationObservation",
+    "ChronologyDecision",
+    "ChronologyInput",
+    "ChronologyReason",
+    "ChronologyStatus",
+    "JoinedLineupOutcome",
+    "MissingRealisedOutcome",
+    "OutcomeState",
+    "RealisedOutcome",
     "ManagerState",
     "ManagerComparison",
     "ManagerStateFailure",
