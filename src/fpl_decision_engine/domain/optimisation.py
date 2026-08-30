@@ -52,6 +52,7 @@ class SingleGameweekOptimisationRequest(DomainModel):
     players: tuple[Player, ...]
     projections: tuple[Projection, ...]
     budget: Money = Money(tenths_million=1000)
+    captain_fallback: bool = True
     must_include_in_squad: frozenset[UUID] = frozenset()
     excluded_players: frozenset[UUID] = frozenset()
     forced_starters: frozenset[UUID] = frozenset()
@@ -64,8 +65,8 @@ class SingleGameweekOptimisationResult(DomainModel):
 
     The first bench entry is the reserve goalkeeper; the remaining entries are
     outfield substitutes in substitution priority order. ``primary_objective`` is the
-    nominal XI-plus-captain score from stage one, never the secondary squad-quality
-    objective.
+    nominal XI-plus-captain score, including captain-to-vice fallback value when
+    enabled and available, never the secondary squad-quality objective.
     """
 
     squad: Squad

@@ -285,6 +285,7 @@ class HighsMultiGameweekPlanner:
                     players=tuple(candidate.player for candidate in owned),
                     projections=tuple(candidate.projections[offset] for candidate in owned),
                     budget=budget,
+                    captain_fallback=False,
                 )
             )
             next_free_transfers = min(5, max(1, free_transfers + 1))
