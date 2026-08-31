@@ -13,8 +13,10 @@ authors = [{ name = "Harish Kamath" }]
 dependencies = [
   "duckdb",
   "highspy",
+  "numpy",
   "polars",
   "pydantic",
+  "statsmodels",
   "pydantic-settings",
   "pyyaml",
   "typer",
