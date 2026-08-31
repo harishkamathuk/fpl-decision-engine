@@ -65,6 +65,9 @@ class _DecisionVariables:
     squad: tuple[highs_var, ...]
     starter: tuple[highs_var, ...]
     captain: tuple[highs_var, ...]
+    vice: tuple[highs_var, ...]
+    captain_nonappearance: highs_var | None
+    vice_fallback: tuple[highs_var, ...]
 
 
 def _expression(terms: Iterable[tuple[float | int, highs_var]]) -> highs_linear_expression:
@@ -111,17 +114,18 @@ def _finite_or_none(value: float) -> float | None:
 
 
 class HighsSingleGameweekOptimiser:
-    """Solve the mean-only FPL baseline with deterministic lexicographic bench quality.
+    """Solve the canonical FPL baseline with deterministic lexicographic bench quality.
 
-    Stage one maximises nominal XI points plus exactly one extra captain copy. Stage two
-    fixes that optimum within a tight absolute tolerance and maximises total projected
-    points of the selected squad. Appearance probabilities are evidence only and are not
-    multiplied into already-unconditional expected points.
+    Stage one maximises nominal XI points, one captain copy and captain-to-vice fallback
+    value when enabled and available. Stage two fixes that optimum within a tight
+    absolute tolerance and maximises total projected points of the selected squad.
+    Appearance probability is used only for the captain fallback event and never to
+    reweight already-unconditional expected points.
     """
 
     @property
     def engine_id(self) -> str:
-        return "highs-single-gameweek-v1"
+        return "highs-single-gameweek-v2"
 
     def optimise(
         self, request: SingleGameweekOptimisationRequest
@@ -148,7 +152,53 @@ class HighsSingleGameweekOptimiser:
                         ),
                     ),
                 )
-            return self._solve(candidates, request, minimum_cost)
+            if not request.captain_fallback:
+                return self._solve(
+                    candidates,
+                    request,
+                    minimum_cost,
+                    fallback_aware=False,
+                    mean_only_reason="disabled",
+                )
+            if not any(
+                candidate.projection.appearance_probability is not None
+                for candidate in candidates
+            ):
+                return self._solve(
+                    candidates,
+                    request,
+                    minimum_cost,
+                    fallback_aware=False,
+                    mean_only_reason="unavailable",
+                )
+
+            provisional = self._solve(
+                candidates,
+                request,
+                minimum_cost,
+                fallback_aware=True,
+            )
+            projections = {
+                candidate.player.id: candidate.projection for candidate in candidates
+            }
+            if projections[provisional.captain_id].appearance_probability is not None:
+                return provisional
+
+            mean_only = self._solve(
+                candidates,
+                request,
+                minimum_cost,
+                fallback_aware=False,
+                mean_only_reason="unavailable",
+                fallback_unavailable_captain_id=provisional.captain_id,
+            )
+            return mean_only.model_copy(
+                update={
+                    "runtime_seconds": (
+                        provisional.runtime_seconds + mean_only.runtime_seconds
+                    )
+                }
+            )
         except OptimisationError:
             raise
         except Exception as exc:
@@ -427,20 +477,61 @@ class HighsSingleGameweekOptimiser:
         candidates: tuple[_Candidate, ...],
         request: SingleGameweekOptimisationRequest,
         minimum_cost: int,
+        *,
+        fallback_aware: bool,
+        mean_only_reason: str | None = None,
+        fallback_unavailable_captain_id: UUID | None = None,
     ) -> SingleGameweekOptimisationResult:
         model = _configured_model()
+        size = len(candidates)
         variables = _DecisionVariables(
             squad=tuple(
                 model.addVariable(lb=0, ub=1, type=HighsVarType.kInteger, name=f"squad_{index}")
-                for index in range(len(candidates))
+                for index in range(size)
             ),
             starter=tuple(
                 model.addVariable(lb=0, ub=1, type=HighsVarType.kInteger, name=f"starter_{index}")
-                for index in range(len(candidates))
+                for index in range(size)
             ),
             captain=tuple(
                 model.addVariable(lb=0, ub=1, type=HighsVarType.kInteger, name=f"captain_{index}")
-                for index in range(len(candidates))
+                for index in range(size)
+            ),
+            vice=(
+                tuple(
+                    model.addVariable(
+                        lb=0,
+                        ub=1,
+                        type=HighsVarType.kInteger,
+                        name=f"vice_{index}",
+                    )
+                    for index in range(size)
+                )
+                if fallback_aware
+                else ()
+            ),
+            captain_nonappearance=(
+                model.addVariable(
+                    lb=0,
+                    ub=1,
+                    type=HighsVarType.kContinuous,
+                    name="captain_nonappearance",
+                )
+                if fallback_aware
+                else None
+            ),
+            vice_fallback=(
+                tuple(
+                    model.addVariable(
+                        lb=0,
+                        ub=1,
+                        type=HighsVarType.kContinuous,
+                        name=f"vice_fallback_{index}",
+                    )
+                    for index in range(size)
+                )
+                if fallback_aware
+                else ()
             ),
         )
         self._add_squad_constraints(
@@ -455,6 +546,11 @@ class HighsSingleGameweekOptimiser:
         primary += _expression(
             (candidate.projection.expected_points, variables.captain[index])
             for index, candidate in enumerate(candidates)
+        )
+        primary += _expression(
+            (candidate.projection.expected_points, variables.vice_fallback[index])
+            for index, candidate in enumerate(candidates)
+            if fallback_aware
         )
         secondary = _expression(
             (candidate.projection.expected_points, variables.squad[index])
@@ -489,6 +585,9 @@ class HighsSingleGameweekOptimiser:
             runtime=runtime,
             solver_status=status_name,
             solver_version=model.version(),
+            fallback_aware=fallback_aware,
+            mean_only_reason=mean_only_reason,
+            fallback_unavailable_captain_id=fallback_unavailable_captain_id,
         )
 
     def _add_lineup_constraints(
@@ -506,6 +605,26 @@ class HighsSingleGameweekOptimiser:
             _expression((1, variable) for variable in variables.captain) == 1,
             name="captain_count",
         )
+        if variables.vice:
+            model.addConstr(
+                _expression((1, variable) for variable in variables.vice) == 1,
+                name="vice_count",
+            )
+            captain_nonappearance = variables.captain_nonappearance
+            assert captain_nonappearance is not None
+            model.addConstr(
+                captain_nonappearance
+                == _expression(
+                    (
+                        0
+                        if candidate.projection.appearance_probability is None
+                        else 1 - candidate.projection.appearance_probability,
+                        variables.captain[index],
+                    )
+                    for index, candidate in enumerate(candidates)
+                ),
+                name="captain_nonappearance_value",
+            )
         for position, (minimum, maximum) in _STARTER_BOUNDS.items():
             position_starters = _expression(
                 (1, variables.starter[index])
@@ -523,6 +642,25 @@ class HighsSingleGameweekOptimiser:
                 variables.captain[index] <= variables.starter[index],
                 name=f"captain_starts_{index}",
             )
+            if variables.vice:
+                vice = variables.vice[index]
+                fallback = variables.vice_fallback[index]
+                captain_nonappearance = variables.captain_nonappearance
+                assert captain_nonappearance is not None
+                model.addConstr(vice <= variables.starter[index], name=f"vice_starts_{index}")
+                model.addConstr(
+                    vice + variables.captain[index] <= 1,
+                    name=f"captain_vice_distinct_{index}",
+                )
+                model.addConstr(
+                    fallback <= captain_nonappearance,
+                    name=f"fallback_nonappearance_upper_{index}",
+                )
+                model.addConstr(fallback <= vice, name=f"fallback_vice_upper_{index}")
+                model.addConstr(
+                    fallback >= captain_nonappearance + vice - 1,
+                    name=f"fallback_lower_{index}",
+                )
             if candidate.player.id in request.forced_starters:
                 model.addConstr(variables.starter[index] == 1, name=f"force_starter_{index}")
             if candidate.player.id == request.forced_captain:
@@ -532,6 +670,8 @@ class HighsSingleGameweekOptimiser:
                 model.addConstr(
                     variables.captain[index] == 0, name=f"forced_vice_not_captain_{index}"
                 )
+                if variables.vice:
+                    model.addConstr(variables.vice[index] == 1, name=f"force_vice_{index}")
 
     @staticmethod
     def _run_or_raise(model: Highs, *, stage: str) -> None:
@@ -567,6 +707,9 @@ class HighsSingleGameweekOptimiser:
         runtime: float,
         solver_status: str,
         solver_version: str,
+        fallback_aware: bool,
+        mean_only_reason: str | None,
+        fallback_unavailable_captain_id: UUID | None,
     ) -> SingleGameweekOptimisationResult:
         selected = {
             index
@@ -650,6 +793,14 @@ class HighsSingleGameweekOptimiser:
             sum(candidates[index].projection.expected_points for index in starters)
             + candidates[captain_index].projection.expected_points
         )
+        captain_appearance = candidates[captain_index].projection.appearance_probability
+        fallback_contribution = 0.0
+        if fallback_aware and captain_appearance is not None:
+            fallback_contribution = (
+                (1 - captain_appearance)
+                * candidates[vice_index].projection.expected_points
+            )
+            realised_primary += fallback_contribution
         if abs(realised_primary - primary_objective) > tolerance * 1.01:
             raise OptimisationError(
                 "secondary solve reduced the primary optimum",
@@ -674,6 +825,33 @@ class HighsSingleGameweekOptimiser:
             )
 
         self._validate_scenario_solution(candidates, selected, starters, captain_id, request)
+        if fallback_aware and captain_appearance is not None:
+            captain_fallback_diagnostic = _diagnostic(
+                "captain_fallback_evaluated",
+                "captain-to-vice fallback value was included in the primary objective",
+                captain_id=captain_id,
+                vice_captain_id=candidates[vice_index].player.id,
+                appearance_probability=captain_appearance,
+                fallback_contribution=fallback_contribution,
+            )
+            primary_message = (
+                "stage one maximised XI points, one captain copy and vice fallback value"
+            )
+        elif mean_only_reason == "unavailable":
+            captain_fallback_diagnostic = _diagnostic(
+                "captain_fallback_unavailable",
+                "captain-to-vice fallback was not evaluated because captain appearance "
+                "probability was unavailable",
+                captain_id=fallback_unavailable_captain_id or captain_id,
+            )
+            primary_message = "stage one used deterministic mean-only captain semantics"
+        else:
+            captain_fallback_diagnostic = _diagnostic(
+                "captain_fallback_disabled",
+                "captain-to-vice fallback was disabled for this mean-only evaluation",
+            )
+            primary_message = "stage one used deterministic mean-only captain semantics"
+
         return SingleGameweekOptimisationResult(
             squad=squad,
             starting_xi=ordered_starters,
@@ -693,7 +871,7 @@ class HighsSingleGameweekOptimiser:
             diagnostics=(
                 _diagnostic(
                     "primary_solve",
-                    "stage one maximised XI points plus one captain copy",
+                    primary_message,
                     objective=primary_objective,
                     bound=primary_info.mip_dual_bound,
                     gap=primary_info.mip_gap,
@@ -709,6 +887,7 @@ class HighsSingleGameweekOptimiser:
                     "minimum legal scenario-constrained squad cost",
                     tenths_million=minimum_cost,
                 ),
+                captain_fallback_diagnostic,
             ),
         )
 

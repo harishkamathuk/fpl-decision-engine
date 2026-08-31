@@ -109,6 +109,23 @@ def request_for(
     return SingleGameweekOptimisationRequest.model_validate(values)
 
 
+def update_projections(
+    projections: tuple[Projection, ...],
+    updates: dict[UUID, dict[str, object]],
+) -> tuple[Projection, ...]:
+    return tuple(
+        projection.model_copy(update=updates[projection.player_id])
+        if projection.player_id in updates
+        else projection
+        for projection in projections
+    )
+
+
+def result_without_runtime_or_diagnostics(result: object) -> object:
+    assert hasattr(result, "model_copy")
+    return result.model_copy(update={"runtime_seconds": 0, "diagnostics": ()})
+
+
 @pytest.fixture(scope="module")
 def baseline() -> tuple[tuple[Player, ...], tuple[Projection, ...], object]:
     players, projections = make_candidates()
@@ -124,6 +141,9 @@ def test_valid_optimisation_returns_complete_legal_recommendation(
     assert hasattr(result, "squad")
     player_by_id = {player.id: player for player in players}
     points = {projection.player_id: projection.expected_points for projection in projections}
+    appearances = {
+        projection.player_id: projection.appearance_probability for projection in projections
+    }
     squad_ids = {member.player_id for member in result.squad.members}
     starter_ids = set(result.starting_xi)
 
@@ -156,6 +176,9 @@ def test_valid_optimisation_returns_complete_legal_recommendation(
     )
     expected_primary = sum(points[player_id] for player_id in result.starting_xi)
     expected_primary += points[result.captain_id]
+    captain_appearance = appearances[result.captain_id]
+    assert captain_appearance is not None
+    expected_primary += (1 - captain_appearance) * points[result.vice_captain_id]
     assert result.primary_objective == pytest.approx(expected_primary)
     assert result.primary_objective > expected_primary * 0.01
     assert result.solver_name.startswith("HiGHS ")
@@ -166,6 +189,7 @@ def test_valid_optimisation_returns_complete_legal_recommendation(
         "primary_solve",
         "secondary_solve",
         "minimum_cost",
+        "captain_fallback_evaluated",
     }
 
 
@@ -347,6 +371,7 @@ def test_secondary_solve_improves_bench_without_reducing_primary() -> None:
     squad_ids = {member.player_id for member in result.squad.members}
     realised_primary = sum(point_by_id[player_id] for player_id in result.starting_xi)
     realised_primary += point_by_id[result.captain_id]
+    realised_primary += 0.99 * point_by_id[result.vice_captain_id]
 
     assert weakest_defender.id not in squad_ids
     assert result.primary_objective == pytest.approx(realised_primary)
@@ -375,13 +400,17 @@ def test_output_is_independent_of_candidate_input_order() -> None:
 def brute_force_primary(
     players: tuple[Player, ...], projections: tuple[Projection, ...], budget: int
 ) -> float:
-    """Enumerate every legal squad, XI and captain independently of the MILP."""
+    """Enumerate every legal squad, XI, captain and vice independently of the MILP."""
 
     by_position = {
         position: tuple(player for player in players if player.position is position)
         for position in Position
     }
     points = {projection.player_id: projection.expected_points for projection in projections}
+    appearances = {
+        projection.player_id: projection.appearance_probability for projection in projections
+    }
+    assert all(probability is not None for probability in appearances.values())
     best = float("-inf")
     position_squads = [
         tuple(combinations(by_position[position], quota)) for position, quota in QUOTAS.items()
@@ -411,7 +440,17 @@ def brute_force_primary(
                     lineup = tuple(player for group in grouped_lineup for player in group)
                     lineup_points = sum(points[player.id] for player in lineup)
                     for captain in lineup:
-                        best = max(best, lineup_points + points[captain.id])
+                        captain_appearance = appearances[captain.id]
+                        assert captain_appearance is not None
+                        vice_points = max(
+                            points[player.id] for player in lineup if player.id != captain.id
+                        )
+                        best = max(
+                            best,
+                            lineup_points
+                            + points[captain.id]
+                            + (1 - captain_appearance) * vice_points,
+                        )
     return best
 
 
@@ -428,3 +467,211 @@ def test_highs_primary_objective_matches_independent_enumeration_oracle() -> Non
     result = HighsSingleGameweekOptimiser().optimise(request_for(players, projections))
 
     assert result.primary_objective == pytest.approx(oracle)
+
+
+def test_fallback_changes_captain_choice_and_matches_exact_formula() -> None:
+    points = {
+        Position.GOALKEEPER: [1, 0],
+        Position.DEFENDER: [1, 1, 1, 0, 0],
+        Position.MIDFIELDER: [10, 9, 1, 1, 1],
+        Position.FORWARD: [1, 1, 0],
+    }
+    counts = {position: len(values) for position, values in points.items()}
+    players, projections = make_candidates(counts, points_by_position=points, price=50)
+    midfielders = [player for player in players if player.position is Position.MIDFIELDER]
+    highest, fallback_captain = midfielders[:2]
+    projections = update_projections(
+        projections,
+        {
+            projection.player_id: {"appearance_probability": 1.0}
+            for projection in projections
+        }
+        | {fallback_captain.id: {"appearance_probability": 0.0}},
+    )
+    optimiser = HighsSingleGameweekOptimiser()
+
+    mean_only = optimiser.optimise(
+        request_for(players, projections, captain_fallback=False)
+    )
+    result = optimiser.optimise(request_for(players, projections))
+    point_by_id = {projection.player_id: projection.expected_points for projection in projections}
+
+    assert mean_only.captain_id == highest.id
+    assert result.captain_id == fallback_captain.id
+    assert result.vice_captain_id == highest.id
+    assert result.captain_id in result.starting_xi
+    assert result.vice_captain_id in result.starting_xi
+    assert result.captain_id != result.vice_captain_id
+    assert result.primary_objective == pytest.approx(
+        sum(point_by_id[player_id] for player_id in result.starting_xi)
+        + point_by_id[result.captain_id]
+        + point_by_id[result.vice_captain_id]
+    )
+    assert "captain_fallback_evaluated" in {
+        diagnostic.code for diagnostic in result.diagnostics
+    }
+
+
+def test_forced_vice_contributes_to_fallback_objective() -> None:
+    players, projections = make_candidates(price=50)
+    captain = players[0]
+    vice = players[-1]
+    projections = update_projections(
+        projections,
+        {captain.id: {"appearance_probability": 0.25}},
+    )
+    points = {projection.player_id: projection.expected_points for projection in projections}
+
+    result = HighsSingleGameweekOptimiser().optimise(
+        request_for(
+            players,
+            projections,
+            forced_captain=captain.id,
+            forced_vice_captain=vice.id,
+        )
+    )
+
+    assert result.vice_captain_id == vice.id
+    assert result.primary_objective == pytest.approx(
+        sum(points[player_id] for player_id in result.starting_xi)
+        + points[captain.id]
+        + 0.75 * points[vice.id]
+    )
+
+
+def test_high_appearance_probability_is_near_mean_only() -> None:
+    players, projections = make_candidates(price=50)
+    captain = players[0]
+    projections = update_projections(
+        projections,
+        {captain.id: {"appearance_probability": 0.999}},
+    )
+    optimiser = HighsSingleGameweekOptimiser()
+    updates = {"forced_captain": captain.id}
+
+    mean_only = optimiser.optimise(
+        request_for(players, projections, captain_fallback=False, **updates)
+    )
+    result = optimiser.optimise(request_for(players, projections, **updates))
+    points = {projection.player_id: projection.expected_points for projection in projections}
+
+    assert result.primary_objective - mean_only.primary_objective == pytest.approx(
+        0.001 * points[result.vice_captain_id]
+    )
+
+
+def test_missing_selected_captain_reruns_exact_mean_only_semantics() -> None:
+    players, projections = make_candidates(price=50)
+    captain = players[0]
+    projections = update_projections(
+        projections,
+        {
+            projection.player_id: {"appearance_probability": 1.0}
+            for projection in projections
+        }
+        | {captain.id: {"appearance_probability": None}},
+    )
+    optimiser = HighsSingleGameweekOptimiser()
+    request = request_for(players, projections, forced_captain=captain.id)
+
+    result = optimiser.optimise(request)
+    mean_only = optimiser.optimise(request.model_copy(update={"captain_fallback": False}))
+
+    assert result_without_runtime_or_diagnostics(result) == result_without_runtime_or_diagnostics(
+        mean_only
+    )
+    assert "captain_fallback_unavailable" in {
+        diagnostic.code for diagnostic in result.diagnostics
+    }
+
+
+def test_all_missing_probabilities_use_mean_only_semantics() -> None:
+    players, projections = make_candidates(price=50)
+    projections = update_projections(
+        projections,
+        {
+            projection.player_id: {"appearance_probability": None}
+            for projection in projections
+        },
+    )
+    optimiser = HighsSingleGameweekOptimiser()
+    request = request_for(players, projections)
+
+    result = optimiser.optimise(request)
+    mean_only = optimiser.optimise(request.model_copy(update={"captain_fallback": False}))
+
+    assert result_without_runtime_or_diagnostics(result) == result_without_runtime_or_diagnostics(
+        mean_only
+    )
+    assert "captain_fallback_unavailable" in {
+        diagnostic.code for diagnostic in result.diagnostics
+    }
+
+
+def test_mixed_probabilities_with_known_captain_use_fallback() -> None:
+    players, projections = make_candidates(price=50)
+    captain = players[0]
+    missing = players[-1]
+    projections = update_projections(
+        projections,
+        {
+            captain.id: {"appearance_probability": 0.5},
+            missing.id: {"appearance_probability": None},
+        },
+    )
+    points = {projection.player_id: projection.expected_points for projection in projections}
+
+    result = HighsSingleGameweekOptimiser().optimise(
+        request_for(players, projections, forced_captain=captain.id)
+    )
+
+    assert result.primary_objective == pytest.approx(
+        sum(points[player_id] for player_id in result.starting_xi)
+        + points[captain.id]
+        + 0.5 * points[result.vice_captain_id]
+    )
+    codes = {diagnostic.code for diagnostic in result.diagnostics}
+    assert "captain_fallback_evaluated" in codes
+    assert "captain_fallback_unavailable" not in codes
+
+
+def test_probability_one_is_known_and_has_zero_fallback_value() -> None:
+    players, projections = make_candidates(price=50)
+    captain = players[0]
+    projections = update_projections(
+        projections,
+        {captain.id: {"appearance_probability": 1.0}},
+    )
+    optimiser = HighsSingleGameweekOptimiser()
+    request = request_for(players, projections, forced_captain=captain.id)
+
+    result = optimiser.optimise(request)
+    mean_only = optimiser.optimise(request.model_copy(update={"captain_fallback": False}))
+
+    assert result.primary_objective == pytest.approx(mean_only.primary_objective)
+    codes = {diagnostic.code for diagnostic in result.diagnostics}
+    assert "captain_fallback_evaluated" in codes
+    assert "captain_fallback_unavailable" not in codes
+
+
+def test_negative_forced_vice_points_remain_in_mandatory_fallback_value() -> None:
+    players, projections = make_candidates(price=50)
+    captain = players[0]
+    vice = players[-1]
+    projections = update_projections(
+        projections,
+        {
+            captain.id: {"appearance_probability": 0.0},
+            vice.id: {"expected_points": -2.0},
+        },
+    )
+    optimiser = HighsSingleGameweekOptimiser()
+    updates = {"forced_captain": captain.id, "forced_vice_captain": vice.id}
+
+    result = optimiser.optimise(request_for(players, projections, **updates))
+    mean_only = optimiser.optimise(
+        request_for(players, projections, captain_fallback=False, **updates)
+    )
+
+    assert result.vice_captain_id == vice.id
+    assert result.primary_objective - mean_only.primary_objective == pytest.approx(-2.0)

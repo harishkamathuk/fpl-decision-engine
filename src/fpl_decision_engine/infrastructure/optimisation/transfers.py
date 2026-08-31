@@ -260,6 +260,7 @@ class HighsSingleGameweekTransferOptimiser:
                 players=tuple(candidate.player for candidate in owned),
                 projections=tuple(candidate.projection for candidate in owned),
                 budget=budget,
+                captain_fallback=False,
             )
         )
         return result.primary_objective

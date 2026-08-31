@@ -571,6 +571,7 @@ def test_small_independent_two_week_enumeration_matches_highs() -> None:
                 players=selected,
                 projections=tuple(projections[(player.id, gameweek)] for player in selected),
                 budget=budget,
+                captain_fallback=False,
             )
         )
         return lineup.primary_objective, lineup.secondary_squad_objective

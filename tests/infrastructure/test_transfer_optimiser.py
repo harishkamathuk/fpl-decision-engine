@@ -374,6 +374,7 @@ def test_small_independent_transfer_enumeration_matches_highs_primary() -> None:
                 players=final_players,
                 projections=tuple(projections[player.id] for player in final_players),
                 budget=budget,
+                captain_fallback=False,
             )
         )
         net = result.primary_objective - 4 * transfer_count

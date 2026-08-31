@@ -50,8 +50,15 @@ def persist_squad_decision_run(
     )
     squad_ids = tuple(sorted(recommendation_ids, key=str))
     starting_xi_ids = tuple(sorted(result.starting_xi, key=str))
+    if request.captain_fallback:
+        optimiser_engine = "highs-single-gameweek-v2"
+        objective_mode = "xi_plus_captain_with_vice_fallback"
+    else:
+        optimiser_engine = "highs-single-gameweek-optimiser-v1"
+        objective_mode = "mean_only_xi_plus_captain"
     settings = (
         ("budget_tenths_million", str(request.budget.tenths_million)),
+        ("captain_fallback", str(request.captain_fallback).lower()),
         ("excluded_player_ids", _uuid_list(sorted(request.excluded_players, key=str)) or "none"),
         (
             "forced_captain_id",
@@ -80,11 +87,11 @@ def persist_squad_decision_run(
         config_fingerprint=config_fingerprint,
         input_snapshot_ids=snapshot_references,
         projection_versions=projection_versions,
-        optimiser_engine="highs-single-gameweek-optimiser-v1",
+        optimiser_engine=optimiser_engine,
         optimiser_version=result.solver_name,
         optimiser_settings=settings,
         strategy_mode="blank_squad_single_gameweek",
-        objective_mode="mean_only_xi_plus_captain",
+        objective_mode=objective_mode,
         random_seed=0,
         output_artifact_references=(
             (output_artifact_reference,) if output_artifact_reference is not None else ()
