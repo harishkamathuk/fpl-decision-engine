@@ -47,6 +47,10 @@ from .gameweek_evidence import (
     validate_gameweek_evidence_references,
     write_gameweek_evidence_manifest,
 )
+from .lineup_evidence_evaluation import (
+    LineupEvidenceStatisticalEvaluator,
+    records_from_joined,
+)
 from .lineup_evidence_validation import build_lineup_evidence_observation
 from .lineup_outcomes import (
     assess_chronology_input,
@@ -113,6 +117,8 @@ from .transfer_runs import persist_transfer_decision_run
 __all__ = [
     "AnalyticalArtifactService",
     "build_lineup_evidence_observation",
+    "LineupEvidenceStatisticalEvaluator",
+    "records_from_joined",
     "assess_chronology_input",
     "assess_observation_chronology",
     "join_lineup_outcomes",
