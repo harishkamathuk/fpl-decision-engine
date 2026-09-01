@@ -118,6 +118,7 @@ class MissingRealisedOutcome(DomainModel):
     canonical_player_id: UUID
     source_reference: str = Field(min_length=1)
     provider_id: str = Field(min_length=1)
+    provider_version: str = Field(min_length=1)
     snapshot_id: str = Field(min_length=1)
     retrieved_at: AwareDatetime
     finalised_at: AwareDatetime

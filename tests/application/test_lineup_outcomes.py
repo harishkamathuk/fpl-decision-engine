@@ -53,7 +53,8 @@ def outcome(*, player=PLAYER, started=False, minutes=0):
 def test_join_distinguishes_nonstart_and_missing_and_is_stable() -> None:
     records = join_lineup_outcomes(
         [observation()], {}, cutoff=CUTOFF, outcome_source_reference="fixture://live",
-        outcome_provider_id="fpl", outcome_snapshot_id="snap", outcome_retrieved_at=CUTOFF,
+        outcome_provider_id="fpl", outcome_provider_version="api-v1",
+        outcome_snapshot_id="snap", outcome_retrieved_at=CUTOFF,
         outcome_finalised_at=CUTOFF,
     )
     assert records[0].outcome_state is OutcomeState.MISSING
@@ -63,7 +64,8 @@ def test_join_distinguishes_nonstart_and_missing_and_is_stable() -> None:
     joined = join_lineup_outcomes(
         [observation()], {("2026-27", 1, PLAYER): started}, cutoff=CUTOFF,
         outcome_source_reference="fixture://live", outcome_provider_id="fpl",
-        outcome_snapshot_id="snap", outcome_retrieved_at=CUTOFF, outcome_finalised_at=CUTOFF,
+        outcome_provider_version="api-v1", outcome_snapshot_id="snap",
+        outcome_retrieved_at=CUTOFF, outcome_finalised_at=CUTOFF,
     )
     assert joined[0].outcome_state is OutcomeState.STARTED
 
@@ -73,7 +75,8 @@ def test_join_rejects_duplicate_observations() -> None:
         join_lineup_outcomes(
             [observation(), observation()], {}, cutoff=CUTOFF,
             outcome_source_reference="fixture://live", outcome_provider_id="fpl",
-            outcome_snapshot_id="snap", outcome_retrieved_at=CUTOFF,
+            outcome_provider_version="api-v1", outcome_snapshot_id="snap",
+            outcome_retrieved_at=CUTOFF,
             outcome_finalised_at=CUTOFF,
         )
     except ValueError as exc:

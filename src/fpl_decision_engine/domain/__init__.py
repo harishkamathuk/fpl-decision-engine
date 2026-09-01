@@ -75,6 +75,14 @@ from .lineup_outcomes import (
     OutcomeState,
     RealisedOutcome,
 )
+from .lineup_validation_artifact import (
+    LineupEvidenceValidationArtefact,
+    LineupValidationDatasetRow,
+    ValidationOutcomeKind,
+    calculate_artefact_identity,
+    calculate_content_hash,
+    calculate_dataset_identity,
+)
 from .manager_state import (
     ManagerComparison,
     ManagerStateFailure,
@@ -198,6 +206,12 @@ __all__ = [
     "LineupEvidenceProvenance",
     "LineupEvidenceStatus",
     "LineupEvidenceValidationObservation",
+    "LineupEvidenceValidationArtefact",
+    "LineupValidationDatasetRow",
+    "ValidationOutcomeKind",
+    "calculate_artefact_identity",
+    "calculate_content_hash",
+    "calculate_dataset_identity",
     "CALIBRATION_BINS",
     "LOG_LOSS_EPSILON",
     "PROTOCOL_VERSION",
