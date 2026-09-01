@@ -91,8 +91,19 @@ class LineupValidationDatasetRow(DomainModel):
         outcome = joined.outcome
         realised = outcome if isinstance(outcome, RealisedOutcome) else None
         missing = outcome if isinstance(outcome, MissingRealisedOutcome) else None
-        if outcome is not None and realised is None and missing is None:
-            raise ValueError("joined outcome has an unsupported outcome representation")
+        if joined.outcome_state is OutcomeState.MISSING:
+            if missing is None:
+                raise ValueError(
+                    "MISSING_OUTCOME requires MissingRealisedOutcome provenance for validation"
+                )
+        elif realised is None:
+            raise ValueError("realised outcome state requires RealisedOutcome for validation")
+        elif (
+            joined.outcome_state is OutcomeState.STARTED and not realised.started
+        ) or (
+            joined.outcome_state is OutcomeState.NON_START and realised.started
+        ):
+            raise ValueError("outcome_state does not match realised outcome started flag")
         return cls(
             season=observation.season,
             gameweek=observation.gameweek.value,

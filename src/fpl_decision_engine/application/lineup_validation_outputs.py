@@ -207,8 +207,11 @@ def load_lineup_validation_artefact(
             f"artefact hash mismatch: expected {sha256}, observed {observed}"
         )
     artefact = parse_lineup_validation_artefact(content)
-    if Path(reference).name != f"{observed}.json":
+    path = Path(reference)
+    if path.name != f"{observed}.json":
         raise InvalidLineupValidationArtefact("artefact filename does not match byte hash")
+    if path.parent.name != f"season={artefact.season}":
+        raise InvalidLineupValidationArtefact("artefact season directory does not match artefact")
     if (
         calculate_dataset_identity(artefact.dataset, artefact.schema_version)
         != artefact.dataset_identity

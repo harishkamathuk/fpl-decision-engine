@@ -143,13 +143,26 @@ def test_dataset_provenance_and_missing_outcome_version_are_retained() -> None:
     assert realised.outcome_provider_version == "api-v1"
     assert missing.outcome_provider_id == "fpl"
     assert missing.outcome_provider_version == "api-v1"
+    assert missing.outcome_source_reference == "fixture://event/live"
     assert missing.outcome_snapshot_id == "outcome-snapshot"
+    assert missing.outcome_retrieved_at == CUTOFF
+    assert missing.outcome_finalised_at == CUTOFF
 
 
 def test_duplicate_logical_rows_are_rejected() -> None:
     record = joined(1)
     with pytest.raises(ValueError, match="duplicate"):
         canonical_validation_dataset([record, record])
+
+
+def test_missing_outcome_without_provenance_is_rejected() -> None:
+    record = joined(1).model_copy(
+        update={"outcome": None, "outcome_state": OutcomeState.MISSING}
+    )
+    with pytest.raises(
+        ValueError, match="MISSING_OUTCOME requires MissingRealisedOutcome provenance"
+    ):
+        canonical_validation_dataset([record])
 
 
 def test_dataset_identity_includes_schema_and_complete_rows() -> None:
@@ -183,6 +196,18 @@ def test_tampering_is_rejected_on_parse_and_load(tmp_path: Path) -> None:
     misleading.write_bytes(content)
     with pytest.raises(InvalidLineupValidationArtefact):
         load_lineup_validation_artefact(reference=str(misleading), sha256=output.sha256)
+
+
+def test_load_rejects_correct_bytes_in_wrong_season_directory(tmp_path: Path) -> None:
+    artefact = build_lineup_validation_artefact([joined(1), joined(2)])
+    output = write_lineup_validation_artefact(artefact, state_root=tmp_path / "state")
+    wrong_directory = output.path.parent.with_name("season=2027-28")
+    wrong_directory.mkdir()
+    wrong_path = wrong_directory / output.path.name
+    wrong_path.write_bytes(output.path.read_bytes())
+
+    with pytest.raises(InvalidLineupValidationArtefact, match="season directory"):
+        load_lineup_validation_artefact(reference=str(wrong_path), sha256=output.sha256)
 
 
 def test_serialization_and_rendering_are_deterministic(tmp_path: Path) -> None:
