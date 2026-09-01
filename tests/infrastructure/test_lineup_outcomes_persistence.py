@@ -42,7 +42,8 @@ def observation():
 def test_joined_records_round_trip_deterministically(tmp_path: Path) -> None:
     records = join_lineup_outcomes(
         [observation()], {}, cutoff=CUTOFF, outcome_source_reference="fixture://live",
-        outcome_provider_id="fpl", outcome_snapshot_id="snap", outcome_retrieved_at=CUTOFF,
+        outcome_provider_id="fpl", outcome_provider_version="api-v1",
+        outcome_snapshot_id="snap", outcome_retrieved_at=CUTOFF,
         outcome_finalised_at=CUTOFF,
     )
     repository = FileJoinedLineupOutcomeRepository(tmp_path)
